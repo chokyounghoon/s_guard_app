@@ -19,6 +19,7 @@ import SearchPage from './pages/SearchPage';
 import IncidentListPage from './pages/IncidentListPage';
 import KeywordManagementPage from './pages/KeywordManagementPage';
 import ReportLineManagementPage from './pages/ReportLineManagementPage';
+import SmsTestPage from './pages/SmsTestPage';
 
 
 
@@ -50,10 +51,7 @@ function App() {
           <Route path="/incident-list" element={<IncidentListPage />} />
           <Route path="/keyword-management" element={<KeywordManagementPage />} />
           <Route path="/report-line-management" element={<ReportLineManagementPage />} />
-
-
-
-
+          <Route path="/sms-test" element={<SmsTestPage />} />
 
         </Routes>
       </GoogleOAuthProvider>
