@@ -277,6 +277,19 @@ export default {
         );
       }
 
+      // KMS Report Save (Mock)
+      if (path === '/ai/report/save' && request.method === 'POST') {
+        const body = await request.json();
+        return new Response(
+          JSON.stringify({
+            status: "success",
+            message: "보고서가 성공적으로 KMS에 저장(임베딩)되었습니다.",
+            doc_id: `report_${Date.now()}`
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       // 루트 경로
       if (path === '/' && request.method === 'GET') {
         return new Response(

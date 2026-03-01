@@ -679,6 +679,35 @@ async def chat_with_ai(request: ChatRequest):
         "response": answer,
         "related_logs": related_logs
     }
-    
+
+class ReportSaveRequest(BaseModel):
+    title: str
+    content: str
+    sms_id: Optional[str] = None
+
+@app.post("/ai/report/save")
+async def save_ai_report(req: ReportSaveRequest):
+    logger.info(f"KMS 보고서 저장 요청: {req.title}")
+    try:
+        doc_id = f"report_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        document_text = f"Title: {req.title}\nContent: {req.content}"
+        
+        vector_store.add_texts(
+            texts=[document_text],
+            metadatas=[{
+                "source": "auto_generated_report",
+                "title": req.title,
+                "timestamp": datetime.utcnow().isoformat(),
+                "sms_id": req.sms_id or "unknown"
+            }],
+            ids=[doc_id]
+        )
+        logger.info(f"ChromaDB [s_guard_knowledge] 컬렉션에 새 보고서 적재 성공. ID: {doc_id}")
+        return {"status": "success", "message": "보고서가 성공적으로 KMS에 저장(임베딩)되었습니다.", "doc_id": doc_id}
+    except Exception as e:
+        logger.error(f"KMS 저장 중 오류 발생: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

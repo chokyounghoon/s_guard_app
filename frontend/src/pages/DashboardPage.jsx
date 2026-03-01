@@ -267,9 +267,34 @@ export default function DashboardPage() {
       setAgentMessages(prev => [...prev, { role: 'DevOps', text: '🚀 WAS-03 재기동 완료.', delay: 0 }]);
     }, 2000);
 
-    setTimeout(() => {
-      setAgentMessages(prev => [...prev, { role: 'Leader', text: '🎉 시스템 안정화 확인. 사후 분석(Post-Mortem) 보고서 생성 중...', delay: 0 }]);
+    setTimeout(async () => {
+      setAgentMessages(prev => [...prev, { role: 'Leader', text: '🎉 시스템 안정화 확인. 사후 분석(Post-Mortem) 보고서 생성 및 KMS 저장 중...', delay: 0 }]);
       setSystemStatus('normal');
+
+      try {
+        const reportTitle = "Agent Discussion Report " + new Date().toISOString().split('T')[0];
+        const reportContent = agentMessages.map(m => `[${m.role}] ${m.text}`).join('\n');
+
+        const apiUrl = window.location.hostname === 'localhost'
+          ? 'http://localhost:8000/ai/report/save'
+          : 'https://sguard-sms-api.khcho0421.workers.dev/ai/report/save';
+
+        const res = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: reportTitle,
+            content: reportContent
+          })
+        });
+
+        if (res.ok) {
+          setAgentMessages(prev => [...prev, { role: 'Leader', text: '💾 [KMS 업데이트 완료] 성공적으로 사후 분석 보고서가 지식 베이스에 임베딩되어 향후 RAG 분석에 반영됩니다.', delay: 0 }]);
+        }
+      } catch (err) {
+        console.error("KMS 저장 실패:", err);
+      }
+
       // Auto close panel delay
       setTimeout(() => setShowAgentPanel(false), 5000);
     }, 4000);
