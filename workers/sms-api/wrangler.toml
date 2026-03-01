@@ -7,6 +7,11 @@ compatibility_date = "2024-01-01"
 binding = "SMS_STORAGE"
 id = "2b426805a38f4403ac1e4f8a03c22d00"
 
+# Local Backend URL (set via `wrangler secret put BACKEND_URL` or env)
+# Leave empty to use built-in mock responses
+[vars]
+BACKEND_URL = ""
+
 # CORS settings
 [env.production]
 vars = { ENVIRONMENT = "production" }
