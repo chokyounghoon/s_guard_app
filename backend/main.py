@@ -11,6 +11,13 @@ from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
+# LangChain & RAG 관련 임포트
+from langchain_community.llms import Ollama
+from langchain_ollama import OllamaEmbeddings
+from langchain_chroma import Chroma
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
+
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,6 +27,51 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://sguard_user:sguard_passwo
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+# RAG 환경설정 (Ollama & ChromaDB 연결)
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+CHROMA_BASE_URL = os.getenv("CHROMA_BASE_URL", "http://localhost:8001")
+
+# 1. 임베딩 모델 (nomic-embed-text)
+embeddings = OllamaEmbeddings(
+    model="nomic-embed-text",
+    base_url=OLLAMA_BASE_URL
+)
+
+# 2. Vector DB (Chroma) 연결
+import chromadb
+# chromadb 컨테이너에 HttpClient로 접속. 포트가 URL 형태라면 분리 필요
+chroma_host = CHROMA_BASE_URL.replace("http://", "").split(":")[0]
+chroma_port = CHROMA_BASE_URL.split(":")[-1]
+
+chroma_client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
+
+vector_store = Chroma(
+    client=chroma_client,
+    collection_name="s_guard_knowledge",
+    embedding_function=embeddings
+)
+
+# 3. LLM 엔진 (Llama 3)
+llm = Ollama(
+    model="llama3",
+    base_url=OLLAMA_BASE_URL,
+    temperature=0.1 # 정확한 답변을 위해 낮은 temperature 설정
+)
+
+# 4. Retrieval QA Chain 셋업 
+# 실제 RAG 연동시 이 chain을 통해 LLM에 질의를 던짐
+qa_prompt_template = PromptTemplate(
+    template="[S-Guard 시스템 컨텍스트]\n{context}\n\n질문: {question}\n\n위 컨텍스트를 기반으로 간결하고 정확하게 시스템 운영 관점에서 답변해줘.",
+    input_variables=["context", "question"]
+)
+
+qa_chain = RetrievalQA.from_chain_type(
+    llm=llm,
+    chain_type="stuff",
+    retriever=vector_store.as_retriever(search_kwargs={"k": 3}),
+    chain_type_kwargs={"prompt": qa_prompt_template}
+)
 
 # DB 모델 정의
 class SMSMessageDB(Base):
@@ -365,39 +417,45 @@ class ChatRequest(BaseModel):
 async def chat_with_ai(request: ChatRequest):
     """
     AI Agent Chatbot Endpoint
-    Simulates log analysis based on user query keywords.
+    Uses Langchain RetrievalQA to answer questions based on ingested ChromaDB data.
     """
-    query = request.query.lower()
+    query = request.query
     
-    # Mock Logic for Demo
-    if "결제" in query or "payment" in query:
-        return {
-            "response": "네, 결제 서버 로그를 분석했습니다.\n현재 **에러율 0%**로 매우 안정적인 상태입니다.\n최근 1시간 동안 처리된 결제는 총 1,240건입니다.",
-            "related_logs": [
-                "[INFO] PaymentGateway: Transaction #8823 success (12ms)",
-                "[INFO] PaymentGateway: Transaction #8824 success (11ms)"
-            ]
-        }
-    
-    elif "에러" in query or "error" in query or "장애" in query:
-        return {
-            "response": "⚠️ **최근 1시간 내 3건의 Critical Error**가 발견되었습니다.\n주로 'Connection Timeout' 관련 이슈이며, 현재 담당자에게 알림이 전송되었습니다.",
-            "related_logs": [
-                "[ERROR] ConnectionPool: Timeout waiting for idle object",
-                "[ERROR] API: 503 Service Unavailable"
-            ]
-        }
+    try:
+        # 1. RAG 체인을 통한 답변 생성
+        response = qa_chain.run(query)
         
-    elif "안녕" in query or "hello" in query:
+        # 2. 참고한 유사 문서(로그) 가져오기 (부가 정보 제공용)
+        docs = vector_store.similarity_search(query, k=2)
+        related_logs = [doc.page_content for doc in docs]
+
         return {
-            "response": "안녕하세요! 저는 S-Guard AI 에이전트입니다.\n서버 상태나 로그에 대해 물어보시면 분석해 드립니다.\n예: '지금 결제 서버 괜찮아?'",
+            "response": response,
+            "related_logs": related_logs
+        }
+    except Exception as e:
+        logger.error(f"AI Chat Error: {str(e)}")
+        # 실패시 Fallback Mock Logic
+        return {
+            "response": "현재 AI 에이전트 서비스 응답이 지연되고 있습니다.",
             "related_logs": []
         }
-        
-    else:
-        return {
-            "response": "기존 장애 ID 1222782번과 정확히 오류 수신 내용이 일치합니다.\n기존 처리는 인스턴스 재시작 및 DB 풀 플러시와 WAS-Cluster-03 재기동을 통하여 해결이 되었습니다. 한번도 휴만 체크후 즉시 죽전담당자에 작업 지시를 내리는게 현명합니다.",
-            "related_logs": []
-        }
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+class DocumentIngestRequest(BaseModel):
+    content: str
+    metadata: Optional[dict] = {}
+
+@app.post("/ai/ingest")
+async def ingest_document(request: DocumentIngestRequest):
+    """
+    System Admin Endpoint to inject knowledge base (text/logs) into ChromaDB
+    """
+    try:
+        vector_store.add_texts(
+            texts=[request.content],
+            metadatas=[request.metadata]
+        )
+        return {"status": "success", "message": "도큐먼트가 성공적으로 ChromaDB에 임베딩되었습니다."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

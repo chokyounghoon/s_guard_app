@@ -12,6 +12,38 @@ services:
     volumes:
       - sguard_postgres_data:/var/lib/postgresql/data
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: sguard-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - sguard_ollama_data:/root/.ollama
+    restart: always
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: sguard-chromadb
+    ports:
+      - "8001:8000"
+    volumes:
+      - sguard_chromadb_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - CHROMA_SERVER_CORS_ALLOW_ORIGINS=["*"]
+    restart: always
+
+  chroma-ui:
+    image: jmk7117/chroma-ui:latest
+    container_name: sguard-chroma-ui
+    environment:
+      - CHROMA_URL=http://chromadb:8000
+    ports:
+      - "8002:3000"
+    depends_on:
+      - chromadb
+    restart: always
+
   backend:
     build: ./backend
     container_name: sguard-backend
@@ -20,8 +52,22 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://sguard_user:sguard_password@db:5432/sguard_db
+      OLLAMA_BASE_URL: http://ollama:11434
+      CHROMA_BASE_URL: http://chromadb:8000
     depends_on:
       - db
+      - ollama
+      - chromadb
+    volumes:
+      - ./backend:/app
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: sguard-tunnel
+    command: tunnel --url http://backend:8000
+    depends_on:
+      - backend
+    restart: always
 
   frontend:
     build: ./frontend
@@ -30,6 +76,11 @@ services:
       - "5174:5173"
     environment:
       VITE_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     stdin_open: true
     tty: true
 
@@ -47,3 +98,5 @@ services:
 
 volumes:
   sguard_postgres_data:
+  sguard_ollama_data:
+  sguard_chromadb_data:

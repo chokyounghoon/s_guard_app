@@ -147,20 +147,40 @@ export default function ChatPage() {
     setUserInput('');
     setIsAiThinking(true);
 
-    // Simulate AI thinking delay
-    setTimeout(() => {
-      const intent = detectIntent(message);
-      const aiResponse = getAIResponse(intent, message);
+    try {
+      const apiResponse = await fetch('http://localhost:8000/ai/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: message })
+      });
+      
+      if (!apiResponse.ok) {
+        throw new Error(`API Error: ${apiResponse.status}`);
+      }
+      
+      const data = await apiResponse.json();
       
       const aiMessage = {
         type: 'ai',
-        ...aiResponse,
+        text: data.response,
+        // We can structure the AI response and optionally add 'related_logs' logic if needed
         timestamp: new Date()
       };
 
       setAiMessages(prev => [...prev, aiMessage]);
+    } catch (error) {
+      console.error("Failed to connect to AI backend:", error);
+      const errorMessage = {
+        type: 'ai',
+        text: "현재 AI 에이전트 서비스 응답이 지연되고 있거나 연결할 수 없습니다. 서버 상태를 확인해주세요.",
+        timestamp: new Date()
+      };
+      setAiMessages(prev => [...prev, errorMessage]);
+    } finally {
       setIsAiThinking(false);
-    }, 1200); // 1.2 seconds thinking time
+    }
   };
 
   const handleQuickAction = (action) => {

@@ -28,9 +28,9 @@ export default function AiInsightPanel({ onLogReceived, onShowDetail }) {
         const data = await response.json();
         setInsightData(data);
         
-        // 부모 컴포넌트로 로그 데이터 전달 (대시보드 카운팅용)
+        // 부모 컴포넌트로 로그 데이터 및 예측 카운트 전달 (대시보드 카운팅용)
         if (onLogReceived && data.current_log) {
-          onLogReceived(data.current_log);
+          onLogReceived(data.current_log, data.prediction_counts);
         }
         
         return data.current_log.text;

@@ -1,12 +1,12 @@
 import React from 'react';
 import { AlertTriangle, Server, Shield, FileText, Sparkles } from 'lucide-react';
 
-const AiPredictionPanel = ({ onShowDetail }) => {
+const AiPredictionPanel = ({ counts, onShowDetail }) => {
   const predictions = [
     {
       id: 'critical',
       label: 'Critical Error 예측됨',
-      count: 0,
+      count: counts?.critical || 0,
       icon: AlertTriangle,
       color: 'red',
       borderColor: 'border-b-red-500',
@@ -16,7 +16,7 @@ const AiPredictionPanel = ({ onShowDetail }) => {
     {
       id: 'server',
       label: '서버오류 예측됨',
-      count: 1,
+      count: counts?.server || 0,
       icon: Server,
       color: 'orange',
       borderColor: 'border-b-orange-500',
@@ -26,7 +26,7 @@ const AiPredictionPanel = ({ onShowDetail }) => {
     {
       id: 'security',
       label: '보안이슈 감지',
-      count: 1,
+      count: counts?.security || 0,
       icon: Shield,
       color: 'blue',
       borderColor: 'border-b-blue-500',
@@ -36,7 +36,7 @@ const AiPredictionPanel = ({ onShowDetail }) => {
     {
       id: 'report',
       label: '예측 분석 레포트',
-      count: 0,
+      count: counts?.report || 0,
       icon: FileText,
       color: 'purple',
       borderColor: 'border-b-purple-500',
