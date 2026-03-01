@@ -35,14 +35,14 @@ export default function DashboardPage() {
   useEffect(() => {
     const savedUser = localStorage.getItem('sguard_user');
     if (savedUser) {
-        setUserProfile(JSON.parse(savedUser));
+      setUserProfile(JSON.parse(savedUser));
     } else {
-        setShowProfileModal(true);
+      setShowProfileModal(true);
     }
 
     const savedCollapsed = localStorage.getItem('sguard_sms_collapsed');
     if (savedCollapsed) {
-        setIsSmsPanelCollapsed(JSON.parse(savedCollapsed));
+      setIsSmsPanelCollapsed(JSON.parse(savedCollapsed));
     }
   }, []);
 
@@ -56,10 +56,10 @@ export default function DashboardPage() {
   const fetchSMSMessages = async () => {
     try {
       // Cloudflare Workers API 사용
-      const apiUrl = window.location.hostname === 'localhost' 
+      const apiUrl = window.location.hostname === 'localhost'
         ? 'http://localhost:8000/sms/recent?limit=3'
-        : 'https://api.chokerslab.store/sms/recent?limit=3';
-      
+        : 'https://sguard-sms-api.khcho0421.workers.dev/sms/recent?limit=3';
+
       const response = await fetch(apiUrl);
       if (response.ok) {
         const data = await response.json();
@@ -80,10 +80,10 @@ export default function DashboardPage() {
   const deleteSMSMessage = async (e, id) => {
     e.stopPropagation();
     try {
-      const apiUrl = window.location.hostname === 'localhost' 
+      const apiUrl = window.location.hostname === 'localhost'
         ? `http://localhost:8000/sms/${id}`
-        : `https://api.chokerslab.store/sms/${id}`;
-      
+        : `https://sguard-sms-api.khcho0421.workers.dev/sms/${id}`;
+
       const response = await fetch(apiUrl, { method: 'DELETE' });
       if (response.ok) {
         // 즉시 화면에서 제거하기 위한 로컬 상태 업데이트
@@ -210,13 +210,13 @@ export default function DashboardPage() {
         { role: 'Security', text: '🔍 새로운 장애 로그 수신. 과거 사례 (RAG) 검색 및 분석을 시작합니다...', delay: 0 }
       ]);
 
-      const apiUrl = window.location.hostname === 'localhost' 
+      const apiUrl = window.location.hostname === 'localhost'
         ? `http://localhost:8000/ai/agent-discussion/${smsMessage.id}`
         : `https://api.chokerslab.store/ai/agent-discussion/${smsMessage.id}`;
-      
+
       const response = await fetch(apiUrl);
       if (!response.ok) throw new Error('Failed to fetch discussion');
-      
+
       const data = await response.json();
       const discussion = data.discussion || [];
 
@@ -237,15 +237,15 @@ export default function DashboardPage() {
         } else {
           // 토론이 끝나면 조치 모달 트리거
           setTimeout(() => {
-              setShowEmergencyModal(true);
+            setShowEmergencyModal(true);
           }, 2000);
         }
       };
 
       // 첫 로딩 말풍선 지우고 시작하려면 setTimeout을 살짝 주고 덮어씌워도 되나, 자연스럽게 이어가기 위해 그냥 실행
       setTimeout(() => {
-         // (선택) 로딩 메시지를 제거하고 싶다면 여기서 필터링 가능
-         runSequence();
+        // (선택) 로딩 메시지를 제거하고 싶다면 여기서 필터링 가능
+        runSequence();
       }, 1000);
 
     } catch (err) {
@@ -262,16 +262,16 @@ export default function DashboardPage() {
     setShowEmergencyModal(false);
     setSystemStatus('recovering');
     setAgentMessages(prev => [...prev, { role: 'Leader', text: '✅ 조치 승인됨. 재기동 스크립트 실행 중...', delay: 0 }]);
-    
+
     setTimeout(() => {
-       setAgentMessages(prev => [...prev, { role: 'DevOps', text: '🚀 WAS-03 재기동 완료.', delay: 0 }]);
+      setAgentMessages(prev => [...prev, { role: 'DevOps', text: '🚀 WAS-03 재기동 완료.', delay: 0 }]);
     }, 2000);
 
     setTimeout(() => {
-       setAgentMessages(prev => [...prev, { role: 'Leader', text: '🎉 시스템 안정화 확인. 사후 분석(Post-Mortem) 보고서 생성 중...', delay: 0 }]);
-       setSystemStatus('normal');
-       // Auto close panel delay
-       setTimeout(() => setShowAgentPanel(false), 5000);
+      setAgentMessages(prev => [...prev, { role: 'Leader', text: '🎉 시스템 안정화 확인. 사후 분석(Post-Mortem) 보고서 생성 중...', delay: 0 }]);
+      setSystemStatus('normal');
+      // Auto close panel delay
+      setTimeout(() => setShowAgentPanel(false), 5000);
     }, 4000);
   };
 
@@ -328,10 +328,10 @@ export default function DashboardPage() {
     if (!showProfileModal) return null;
 
     const currentProfile = userProfile || { name: 'Guest User', email: 'guest@s-guard.ai', picture: null, dept: '', team: '' };
-    
+
     return (
-      <ProfileModalContent 
-        profile={currentProfile} 
+      <ProfileModalContent
+        profile={currentProfile}
         onClose={() => setShowProfileModal(false)}
         onSave={(updated) => {
           setUserProfile(updated);
@@ -356,29 +356,29 @@ export default function DashboardPage() {
             <Search className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors cursor-pointer" />
           </div>
           <div className="relative group">
-            <Bell 
-              className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors cursor-pointer" 
+            <Bell
+              className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors cursor-pointer"
               onClick={() => setShowNotifications(true)}
             />
             {allNotifications.length > 0 && (
               <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
             )}
           </div>
-          <div 
+          <div
             className="flex items-center space-x-3 cursor-pointer hover:bg-white/5 p-1 px-2 rounded-xl transition-colors group"
             onClick={() => setShowProfileModal(true)}
           >
             {userProfile && (
-            <span className="text-xs font-bold text-slate-300 hidden sm:inline-block group-hover:text-blue-400">
+              <span className="text-xs font-bold text-slate-300 hidden sm:inline-block group-hover:text-blue-400">
                 {userProfile.name}
-            </span>
+              </span>
             )}
             <div className="w-8 h-8 bg-slate-700/50 rounded-full flex items-center justify-center border border-white/10 overflow-hidden ring-2 ring-blue-500/20 group-hover:ring-blue-500/50 transition-all">
-                {userProfile?.picture ? (
+              {userProfile?.picture ? (
                 <img src={userProfile.picture} alt="Profile" className="w-full h-full object-cover" />
-                ) : (
+              ) : (
                 <User className="w-5 h-5 text-slate-300 group-hover:text-blue-400" />
-                )}
+              )}
             </div>
           </div>
         </div>
@@ -388,8 +388,8 @@ export default function DashboardPage() {
       {messages.length > 0 && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md p-4 space-y-2">
           {messages.map(msg => (
-            <div 
-              key={msg.id} 
+            <div
+              key={msg.id}
               className={`flex items-center justify-between p-3 rounded-xl shadow-lg animate-in fade-in slide-in-from-top-2 duration-300
                 ${msg.type === 'error' ? 'bg-red-600 text-white' : 'bg-blue-600 text-white'}
               `}
@@ -421,18 +421,18 @@ export default function DashboardPage() {
                   <p className="text-[10px] text-slate-500 font-mono uppercase">Notification Center</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setShowNotifications(false)}
                 className="p-2 rounded-full hover:bg-white/5 transition-colors"
               >
                 <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
-            
+
             <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
               {allNotifications.length > 0 ? (
                 allNotifications.map((n) => (
-                  <div 
+                  <div
                     key={n.id}
                     onClick={() => {
                       setShowNotifications(false);
@@ -467,9 +467,9 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
-            
+
             <div className="p-4 border-t border-white/5">
-              <button 
+              <button
                 onClick={() => {
                   setAllNotifications([]);
                   setShowNotifications(false);
@@ -491,7 +491,7 @@ export default function DashboardPage() {
         {/* 실시간 SMS 수신 내역 패널 (접기/펼치기 가능) */}
         {smsMessages.length > 0 && (
           <div className="bg-[#1a1f2e] rounded-3xl border border-white/5 shadow-xl mb-6 overflow-hidden transition-all duration-300">
-            <div 
+            <div
               onClick={toggleSmsPanel}
               className="p-6 flex justify-between items-center cursor-pointer hover:bg-white/5 transition-colors"
             >
@@ -545,7 +545,7 @@ export default function DashboardPage() {
                         <p className="text-xs text-slate-400 mb-1">발신: {msg.sender}</p>
                         <p className="text-sm text-slate-200 leading-snug">{msg.message}</p>
                       </div>
-                      <button 
+                      <button
                         onClick={(e) => deleteSMSMessage(e, msg.id)}
                         className="ml-2 p-1.5 rounded-full hover:bg-white/10 text-slate-400 hover:text-red-400 transition-colors shrink-0 opacity-0 group-hover:opacity-100"
                         title="삭제"
@@ -562,9 +562,9 @@ export default function DashboardPage() {
 
         {/* AI Autopilot Insight Panel */}
         <React.Suspense fallback={<div className="h-48 bg-gray-900 rounded-3xl animate-pulse"></div>}>
-            <ErrorBoundary>
-                <AiInsightPanel onLogReceived={handleLogReceived} onShowDetail={handleShowInsight} />
-            </ErrorBoundary>
+          <ErrorBoundary>
+            <AiInsightPanel onLogReceived={handleLogReceived} onShowDetail={handleShowInsight} />
+          </ErrorBoundary>
         </React.Suspense>
 
         {/* AI Autopilot Prediction Panel (Standalone) */}
@@ -572,10 +572,10 @@ export default function DashboardPage() {
 
         {/* AI Insight Modal */}
         {showInsightModal && (
-            <AIInsightModal 
-                insight={selectedInsightData} 
-                onClose={() => setShowInsightModal(false)} 
-            />
+          <AIInsightModal
+            insight={selectedInsightData}
+            onClose={() => setShowInsightModal(false)}
+          />
         )}
 
         {/* AI/SMS Status Panel */}
@@ -596,7 +596,7 @@ export default function DashboardPage() {
                 let severity = 'info';
                 let title = 'System Report';
                 const lowerText = (msg.message || '').toLowerCase();
-                
+
                 if (lowerText.includes('critical') || lowerText.includes('db') || lowerText.includes('데이터베이스')) {
                   severity = 'critical';
                   title = 'Critical Process Error';
@@ -612,21 +612,21 @@ export default function DashboardPage() {
                   <div key={msg.id} onClick={() => startLiveScenario(msg)} className="cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99] relative">
                     {/* 반짝이는 표시기 */}
                     {isRecent && <div className="absolute top-2 right-2 w-2 h-2 bg-blue-500 rounded-full animate-ping z-10" />}
-                    
-                    <AlertItem 
-                        title={title}
-                        time={new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 
-                        severity={severity}
-                        desc={msg.message}
+
+                    <AlertItem
+                      title={title}
+                      time={new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      severity={severity}
+                      desc={msg.message}
                     />
                   </div>
                 );
               })}
-              
+
               {smsMessages.length === 0 && (
-                 <div className="text-center text-slate-500 text-sm py-4">
-                   Waiting for incoming incidents...
-                 </div>
+                <div className="text-center text-slate-500 text-sm py-4">
+                  Waiting for incoming incidents...
+                </div>
               )}
             </div>
           </div>
@@ -634,326 +634,324 @@ export default function DashboardPage() {
           {/* Quick Actions / Assignment / Agent Panel */}
           <div className="lg:col-span-2 space-y-6">
             {showAgentPanel ? (
-                 <AgentDiscussionPanel 
-                    messages={agentMessages} 
-                    isVisible={true}
-                    embedded={true}
-                    onClose={() => setShowAgentPanel(false)} 
-                />
+              <AgentDiscussionPanel
+                messages={agentMessages}
+                isVisible={true}
+                embedded={true}
+                onClose={() => setShowAgentPanel(false)}
+              />
             ) : (
-                <div className="bg-[#1a1f2e] rounded-2xl p-6 border border-white/5 h-full">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-bold flex items-center">
-                            <Shield className="w-4 h-4 mr-2 text-purple-400" />
-                            AI War-Room Situation Log
-                        </h3>
-                        <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded">승인 대기: 1건</span>
-                    </div>
-                    
-                    <div className="space-y-3">
-                        {/* Dynamic Active AI Scenario Item (Optional rendering logic if you want to show running scenario here too) */}
-                        <div onClick={() => {}} className="bg-[#11141d] p-4 rounded-xl border border-red-500/20 cursor-pointer hover:bg-[#1a1f2e] hover:border-red-500/50 transition-all group relative overflow-hidden">
-                            <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
-                            <div className="flex justify-between items-center mb-1">
-                                <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">AGENT LOG</span>
-                                <span className="text-[10px] text-slate-500">Live</span>
-                            </div>
-                            <h4 className="font-bold text-sm text-slate-200 mb-1 group-hover:text-red-400 transition-colors">실시간 다중 에이전트 분석 중</h4>
-                            <p className="text-xs text-slate-500 mb-2 line-clamp-1">좌측 Incident 목록을 클릭하여 회의를 시작하세요.</p>
-                            <div className="flex justify-end">
-                                <span className="text-[10px] text-blue-400 font-bold flex items-center group-hover:underline">
-                                    대기 중 <ChevronRight className="w-3 h-3 ml-0.5" />
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Static Item */}
-                        <div className="bg-[#11141d] p-4 rounded-xl border border-white/5 opacity-60 hover:opacity-100 transition-opacity">
-                            <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
-                            <div className="flex justify-between items-center mb-1">
-                                <span className="text-[10px] font-bold text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20">MAJOR</span>
-                                <span className="text-[10px] text-slate-500">2h ago</span>
-                            </div>
-                            <h4 className="font-bold text-sm text-slate-300 mb-1">API Gateway Latency</h4>
-                            <p className="text-xs text-slate-500 line-clamp-1">Intermittent packet loss in region ap-ne-2.</p>
-                        </div>
-                    </div>
+              <div className="bg-[#1a1f2e] rounded-2xl p-6 border border-white/5 h-full">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold flex items-center">
+                    <Shield className="w-4 h-4 mr-2 text-purple-400" />
+                    AI War-Room Situation Log
+                  </h3>
+                  <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded">승인 대기: 1건</span>
                 </div>
+
+                <div className="space-y-3">
+                  {/* Dynamic Active AI Scenario Item (Optional rendering logic if you want to show running scenario here too) */}
+                  <div onClick={() => { }} className="bg-[#11141d] p-4 rounded-xl border border-red-500/20 cursor-pointer hover:bg-[#1a1f2e] hover:border-red-500/50 transition-all group relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">AGENT LOG</span>
+                      <span className="text-[10px] text-slate-500">Live</span>
+                    </div>
+                    <h4 className="font-bold text-sm text-slate-200 mb-1 group-hover:text-red-400 transition-colors">실시간 다중 에이전트 분석 중</h4>
+                    <p className="text-xs text-slate-500 mb-2 line-clamp-1">좌측 Incident 목록을 클릭하여 회의를 시작하세요.</p>
+                    <div className="flex justify-end">
+                      <span className="text-[10px] text-blue-400 font-bold flex items-center group-hover:underline">
+                        대기 중 <ChevronRight className="w-3 h-3 ml-0.5" />
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Static Item */}
+                  <div className="bg-[#11141d] p-4 rounded-xl border border-white/5 opacity-60 hover:opacity-100 transition-opacity">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-bold text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20">MAJOR</span>
+                      <span className="text-[10px] text-slate-500">2h ago</span>
+                    </div>
+                    <h4 className="font-bold text-sm text-slate-300 mb-1">API Gateway Latency</h4>
+                    <p className="text-xs text-slate-500 line-clamp-1">Intermittent packet loss in region ap-ne-2.</p>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
 
         {/* Section 3: My Confirmation History & Recent List */}
-         <div className="bg-[#1a1f2e] rounded-3xl p-6 border border-white/5 shadow-xl mt-6">
-            <div className="flex justify-between items-center mb-5">
-                 <div className="flex items-center space-x-2">
-                    <User className="w-5 h-5 text-blue-500" />
-                    <h2 className="font-bold text-lg">나의 Autopilot 확인요청 현황</h2>
-                 </div>
-                <span className="text-[10px] text-slate-400">실시간 업데이트</span>
+        <div className="bg-[#1a1f2e] rounded-3xl p-6 border border-white/5 shadow-xl mt-6">
+          <div className="flex justify-between items-center mb-5">
+            <div className="flex items-center space-x-2">
+              <User className="w-5 h-5 text-blue-500" />
+              <h2 className="font-bold text-lg">나의 Autopilot 확인요청 현황</h2>
+            </div>
+            <span className="text-[10px] text-slate-400">실시간 업데이트</span>
+          </div>
+
+          {/* KPI Cards */}
+          <div className="grid grid-cols-4 gap-4 mb-6">
+            {/* Total */}
+            <div
+              onClick={() => navigate('/assignments?tab=전체')}
+              className="bg-[#11141d] p-5 rounded-2xl border border-white/5 relative cursor-pointer hover:bg-[#252b41] transition-all hover:scale-[1.02] active:scale-95"
+            >
+              <p className="text-xs text-slate-400 mb-2 font-medium">총건</p>
+              <span className="text-4xl font-bold text-white transition-all duration-500">{totalAssignedCount}</span>
+              <div className="absolute bottom-4 right-4 bg-slate-700/20 p-2 rounded-xl">
+                <MoreHorizontal className="w-5 h-5 text-slate-500 fill-current" />
+              </div>
             </div>
 
-            {/* KPI Cards */}
-            <div className="grid grid-cols-4 gap-4 mb-6">
-                {/* Total */}
-                <div 
-                    onClick={() => navigate('/assignments?tab=전체')}
-                    className="bg-[#11141d] p-5 rounded-2xl border border-white/5 relative cursor-pointer hover:bg-[#252b41] transition-all hover:scale-[1.02] active:scale-95"
-                >
-                    <p className="text-xs text-slate-400 mb-2 font-medium">총건</p>
-                    <span className="text-4xl font-bold text-white transition-all duration-500">{totalAssignedCount}</span>
-                    <div className="absolute bottom-4 right-4 bg-slate-700/20 p-2 rounded-xl">
-                        <MoreHorizontal className="w-5 h-5 text-slate-500 fill-current" />
-                    </div>
-                </div>
-
-                {/* Unconfirmed (Red) */}
-                <div 
-                    onClick={() => navigate('/assignments?tab=상태: 대기')}
-                    className="bg-[#11141d] p-5 rounded-2xl border border-white/5 relative cursor-pointer hover:bg-[#2e1a1a] transition-all hover:scale-[1.02] active:scale-95"
-                >
-                    <p className="text-xs text-slate-400 mb-2 font-medium">미확인</p>
-                    <span className="text-4xl font-bold text-red-400">0</span>
-                    <div className="absolute bottom-4 right-4 bg-red-600/20 p-2 rounded-xl">
-                        <AlertTriangle className="w-5 h-5 text-red-500" />
-                    </div>
-                    {/* Pulsing Dot for Attention */}
-                    <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-ping" />
-                </div>
-
-                {/* Processing (Orange) */}
-                <div 
-                    onClick={() => navigate('/assignments?tab=상태: 처리중')}
-                    className="bg-[#11141d] p-5 rounded-2xl border border-white/5 relative cursor-pointer hover:bg-[#2e231a] transition-colors"
-                >
-                    <p className="text-xs text-slate-400 mb-2 font-medium">처리중</p>
-                    <span className="text-4xl font-bold text-orange-400">2</span>
-                    <div className="absolute bottom-4 right-4 bg-orange-600/20 p-2 rounded-xl">
-                        <RefreshCw className="w-5 h-5 text-orange-500" />
-                    </div>
-                </div>
-
-                {/* Completed (Blue) */}
-                <div 
-                    onClick={() => navigate('/assignments?tab=상태: 완료')}
-                    className="bg-[#11141d] p-5 rounded-2xl border border-white/5 relative cursor-pointer hover:bg-[#1a1f2e] transition-colors"
-                >
-                    <p className="text-xs text-slate-400 mb-2 font-medium">처리완료</p>
-                    <span className="text-4xl font-bold text-blue-400">3</span>
-                    <div className="absolute bottom-4 right-4 bg-blue-600/20 p-2 rounded-xl">
-                        <CheckCircle className="w-5 h-5 text-blue-500" />
-                    </div>
-                </div>
+            {/* Unconfirmed (Red) */}
+            <div
+              onClick={() => navigate('/assignments?tab=상태: 대기')}
+              className="bg-[#11141d] p-5 rounded-2xl border border-white/5 relative cursor-pointer hover:bg-[#2e1a1a] transition-all hover:scale-[1.02] active:scale-95"
+            >
+              <p className="text-xs text-slate-400 mb-2 font-medium">미확인</p>
+              <span className="text-4xl font-bold text-red-400">0</span>
+              <div className="absolute bottom-4 right-4 bg-red-600/20 p-2 rounded-xl">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+              </div>
+              {/* Pulsing Dot for Attention */}
+              <div className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-ping" />
             </div>
 
-            {/* Recent List Header */}
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-bold text-white">최근 할당 리스트 ({recentAssignments.length})</h3>
-                <button 
-                    onClick={() => navigate('/assignments')}
-                    className="text-[11px] text-blue-500 font-medium hover:text-blue-400 flex items-center"
-                >
-                    전체보기 <ChevronRight className="w-3 h-3 ml-0.5" />
-                </button>
+            {/* Processing (Orange) */}
+            <div
+              onClick={() => navigate('/assignments?tab=상태: 처리중')}
+              className="bg-[#11141d] p-5 rounded-2xl border border-white/5 relative cursor-pointer hover:bg-[#2e231a] transition-colors"
+            >
+              <p className="text-xs text-slate-400 mb-2 font-medium">처리중</p>
+              <span className="text-4xl font-bold text-orange-400">2</span>
+              <div className="absolute bottom-4 right-4 bg-orange-600/20 p-2 rounded-xl">
+                <RefreshCw className="w-5 h-5 text-orange-500" />
+              </div>
             </div>
 
-            {/* List Items - Dynamic */}
-            <div className="space-y-3">
-                {recentAssignments.length > 0 ? (
-                    recentAssignments.slice(0, 3).map((item) => (
-                        <div 
-                            key={item.id}
-                            onClick={() => navigate('/assignment-detail?status=Open')}
-                            className={`${item.bgColor} p-4 rounded-2xl border ${item.borderColor} relative group hover:border-white/10 transition-colors cursor-pointer`}
-                        >
-                            <div className="flex items-start space-x-3">
-                                <div className={`${item.severity === 'CRITICAL' ? 'bg-red-500/10' : 'bg-blue-500/10'} p-2 rounded-full mt-0.5`}>
-                                    <AlertCircle className={`w-5 h-5 ${item.severity === 'CRITICAL' ? 'text-red-500' : 'text-blue-500'}`} />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-start mb-1">
-                                        <div className="flex items-center gap-2 max-w-[70%]">
-                                          <span className={`text-[8px] font-black px-1 py-0.5 rounded border flex-shrink-0 ${
-                                            item.assignmentType === 'AI' 
-                                              ? 'bg-purple-500/20 text-purple-400 border-purple-500/30' 
-                                              : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                                          }`}>
-                                            {item.assignmentType || 'AI'}
-                                          </span>
-                                          <h4 className="text-sm font-bold text-white truncate">{item.title}</h4>
-                                        </div>
-                                        <span className="text-[10px] text-slate-500 font-mono">{item.time}</span>
-                                    </div>
-                                    <p className="text-xs text-slate-300 leading-snug mb-2">
-                                        발신: {item.sender}
-                                    </p>
-                                    <div className="flex items-center justify-between">
-                                        <span className={`${item.severity === 'CRITICAL' ? 'bg-red-500/20 text-red-500 border-red-500/30' : 'bg-blue-500/20 text-blue-500 border-blue-500/30'} text-[10px] font-bold px-2 py-0.5 rounded border`}>
-                                            {item.severity}
-                                        </span>
-                                        <span className="text-[10px] text-slate-500">{item.code}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ))
-                ) : (
-                    <div className="bg-[#11141d] p-8 rounded-2xl border border-white/5 text-center">
-                        <Info className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                        <p className="text-sm text-slate-400">최근 할당 내역이 없습니다</p>
-                        <p className="text-xs text-slate-500 mt-1">SMS 메시지가 수신되면 자동으로 추가됩니다</p>
-                    </div>
-                )}
+            {/* Completed (Blue) */}
+            <div
+              onClick={() => navigate('/assignments?tab=상태: 완료')}
+              className="bg-[#11141d] p-5 rounded-2xl border border-white/5 relative cursor-pointer hover:bg-[#1a1f2e] transition-colors"
+            >
+              <p className="text-xs text-slate-400 mb-2 font-medium">처리완료</p>
+              <span className="text-4xl font-bold text-blue-400">3</span>
+              <div className="absolute bottom-4 right-4 bg-blue-600/20 p-2 rounded-xl">
+                <CheckCircle className="w-5 h-5 text-blue-500" />
+              </div>
             </div>
           </div>
+
+          {/* Recent List Header */}
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-sm font-bold text-white">최근 할당 리스트 ({recentAssignments.length})</h3>
+            <button
+              onClick={() => navigate('/assignments')}
+              className="text-[11px] text-blue-500 font-medium hover:text-blue-400 flex items-center"
+            >
+              전체보기 <ChevronRight className="w-3 h-3 ml-0.5" />
+            </button>
+          </div>
+
+          {/* List Items - Dynamic */}
+          <div className="space-y-3">
+            {recentAssignments.length > 0 ? (
+              recentAssignments.slice(0, 3).map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => navigate('/assignment-detail?status=Open')}
+                  className={`${item.bgColor} p-4 rounded-2xl border ${item.borderColor} relative group hover:border-white/10 transition-colors cursor-pointer`}
+                >
+                  <div className="flex items-start space-x-3">
+                    <div className={`${item.severity === 'CRITICAL' ? 'bg-red-500/10' : 'bg-blue-500/10'} p-2 rounded-full mt-0.5`}>
+                      <AlertCircle className={`w-5 h-5 ${item.severity === 'CRITICAL' ? 'text-red-500' : 'text-blue-500'}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-start mb-1">
+                        <div className="flex items-center gap-2 max-w-[70%]">
+                          <span className={`text-[8px] font-black px-1 py-0.5 rounded border flex-shrink-0 ${item.assignmentType === 'AI'
+                              ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                              : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                            }`}>
+                            {item.assignmentType || 'AI'}
+                          </span>
+                          <h4 className="text-sm font-bold text-white truncate">{item.title}</h4>
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono">{item.time}</span>
+                      </div>
+                      <p className="text-xs text-slate-300 leading-snug mb-2">
+                        발신: {item.sender}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className={`${item.severity === 'CRITICAL' ? 'bg-red-500/20 text-red-500 border-red-500/30' : 'bg-blue-500/20 text-blue-500 border-blue-500/30'} text-[10px] font-bold px-2 py-0.5 rounded border`}>
+                          {item.severity}
+                        </span>
+                        <span className="text-[10px] text-slate-500">{item.code}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="bg-[#11141d] p-8 rounded-2xl border border-white/5 text-center">
+                <Info className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                <p className="text-sm text-slate-400">최근 할당 내역이 없습니다</p>
+                <p className="text-xs text-slate-500 mt-1">SMS 메시지가 수신되면 자동으로 추가됩니다</p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-       {/* AI Agent Demo Components - Emergency Modal Only (Panel is now embedded) */}
-       <EmergencyActionModal 
-         isOpen={showEmergencyModal}
-         onClose={() => setShowEmergencyModal(false)}
-         onApprove={handleApproveAction}
-       />
-       
-       {renderProfileModal()}
-       <AIInsightModal insight={selectedInsight} onClose={() => setSelectedInsight(null)} />
+      {/* AI Agent Demo Components - Emergency Modal Only (Panel is now embedded) */}
+      <EmergencyActionModal
+        isOpen={showEmergencyModal}
+        onClose={() => setShowEmergencyModal(false)}
+        onApprove={handleApproveAction}
+      />
 
-       {/* War Room Chat List Popup */}
-       {showWarRoomPopup && (
-         <div className="fixed inset-0 z-[100] flex items-end justify-center animate-in fade-in duration-300">
-           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowWarRoomPopup(false)} />
-           
-           <div className="bg-[#1a1f2e] w-full max-w-xl rounded-t-[2.5rem] border-t border-white/10 shadow-2xl relative z-10 overflow-hidden flex flex-col max-h-[80vh] animate-in slide-in-from-bottom-full duration-500">
-             {/* Header */}
-             <div className="p-6 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-blue-600/10 to-transparent">
-               <div className="flex items-center space-x-3">
-                 <div className="bg-blue-600/20 p-2.5 rounded-xl border border-blue-500/30">
-                   <MessageSquare className="w-5 h-5 text-blue-400" />
-                 </div>
-                 <div>
-                   <h3 className="font-bold text-lg text-white">참여 중인 War-Room</h3>
-                   <p className="text-[10px] text-slate-500 font-mono">ACTIVE CHANNELS (2)</p>
-                 </div>
-               </div>
-               <button 
-                 onClick={() => setShowWarRoomPopup(false)}
-                 className="p-2 rounded-full hover:bg-white/5 transition-colors group"
-               >
-                 <X className="w-5 h-5 text-slate-500 group-hover:text-white" />
-               </button>
-             </div>
- 
-             {/* Chat Room List */}
-             <div className="flex-1 overflow-y-auto p-5 space-y-3 custom-scrollbar">
-               {[
-                 { 
-                   id: 1, 
-                   title: '[신한카드] SHB02681 은행고객종합...', 
-                   lastMsg: 'AI 분석 결과 트래픽 임계치 설정 오류가 확인되었습니다.', 
-                   time: '18:45', 
-                   participants: 5,
-                   severity: 'CRITICAL',
-                   unread: true
-                 },
-                 { 
-                   id: 2, 
-                   title: 'INC-8823 서버 타임아웃 대응', 
-                   lastMsg: 'DB Connection Pool 증설 작업이 완료되었습니다.', 
-                   time: '14:30', 
-                   participants: 3,
-                   severity: 'MAJOR',
-                   unread: false
-                 }
-               ].map((room) => (
-                 <div 
-                   key={room.id}
-                   onClick={() => {
-                     setShowWarRoomPopup(false);
-                     navigate('/chat');
-                   }}
-                   className="bg-[#11141d] p-4 rounded-2xl border border-white/5 hover:border-blue-500/30 transition-all cursor-pointer group relative overflow-hidden active:scale-[0.98]"
-                 >
-                   <div className="flex items-start justify-between mb-2">
-                     <div className="flex items-center gap-2">
-                       <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
-                         room.severity === 'CRITICAL' ? 'bg-red-500/20 text-red-500 border-red-500/30' : 'bg-orange-500/20 text-orange-500 border-orange-500/30'
-                       }`}>
-                         {room.severity}
-                       </span>
-                       <span className="text-[10px] text-slate-500 font-mono">ROOM #{room.id}</span>
-                     </div>
-                     <span className="text-[10px] text-slate-500">{room.time}</span>
-                   </div>
-                   
-                   <h4 className="font-bold text-slate-200 mb-1 group-hover:text-blue-400 transition-colors truncate">
-                     {room.title}
-                   </h4>
-                   <p className="text-xs text-slate-400 truncate mb-3">{room.lastMsg}</p>
-                   
-                   <div className="flex items-center justify-between">
-                     <div className="flex -space-x-2">
-                       {[1, 2, 3].map(i => (
-                         <div key={i} className="w-6 h-6 rounded-full bg-slate-800 border-2 border-[#11141d] flex items-center justify-center">
-                           <User className="w-3 h-3 text-slate-400" />
-                         </div>
-                       ))}
-                       <div className="w-6 h-6 rounded-full bg-blue-600/20 border-2 border-[#11141d] flex items-center justify-center">
-                         <span className="text-[8px] font-bold text-blue-400">+{room.participants - 3}</span>
-                       </div>
-                     </div>
-                     {room.unread && (
-                       <div className="bg-blue-600 text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">NEW</div>
-                     )}
-                   </div>
-                 </div>
-               ))}
-             </div>
- 
-             {/* Bottom Safe Area */}
-             <div className="pb-8 px-6 pt-2">
-               <button 
-                 onClick={() => navigate('/assignments')}
-                 className="w-full py-4 rounded-2xl bg-slate-800 text-slate-400 font-bold text-sm hover:bg-slate-700 transition-colors"
-               >
-                 전체 히스토리 보기
-               </button>
-             </div>
-           </div>
-         </div>
-       )}
+      {renderProfileModal()}
+      <AIInsightModal insight={selectedInsight} onClose={() => setSelectedInsight(null)} />
+
+      {/* War Room Chat List Popup */}
+      {showWarRoomPopup && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center animate-in fade-in duration-300">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowWarRoomPopup(false)} />
+
+          <div className="bg-[#1a1f2e] w-full max-w-xl rounded-t-[2.5rem] border-t border-white/10 shadow-2xl relative z-10 overflow-hidden flex flex-col max-h-[80vh] animate-in slide-in-from-bottom-full duration-500">
+            {/* Header */}
+            <div className="p-6 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-blue-600/10 to-transparent">
+              <div className="flex items-center space-x-3">
+                <div className="bg-blue-600/20 p-2.5 rounded-xl border border-blue-500/30">
+                  <MessageSquare className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-white">참여 중인 War-Room</h3>
+                  <p className="text-[10px] text-slate-500 font-mono">ACTIVE CHANNELS (2)</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWarRoomPopup(false)}
+                className="p-2 rounded-full hover:bg-white/5 transition-colors group"
+              >
+                <X className="w-5 h-5 text-slate-500 group-hover:text-white" />
+              </button>
+            </div>
+
+            {/* Chat Room List */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-3 custom-scrollbar">
+              {[
+                {
+                  id: 1,
+                  title: '[신한카드] SHB02681 은행고객종합...',
+                  lastMsg: 'AI 분석 결과 트래픽 임계치 설정 오류가 확인되었습니다.',
+                  time: '18:45',
+                  participants: 5,
+                  severity: 'CRITICAL',
+                  unread: true
+                },
+                {
+                  id: 2,
+                  title: 'INC-8823 서버 타임아웃 대응',
+                  lastMsg: 'DB Connection Pool 증설 작업이 완료되었습니다.',
+                  time: '14:30',
+                  participants: 3,
+                  severity: 'MAJOR',
+                  unread: false
+                }
+              ].map((room) => (
+                <div
+                  key={room.id}
+                  onClick={() => {
+                    setShowWarRoomPopup(false);
+                    navigate('/chat');
+                  }}
+                  className="bg-[#11141d] p-4 rounded-2xl border border-white/5 hover:border-blue-500/30 transition-all cursor-pointer group relative overflow-hidden active:scale-[0.98]"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${room.severity === 'CRITICAL' ? 'bg-red-500/20 text-red-500 border-red-500/30' : 'bg-orange-500/20 text-orange-500 border-orange-500/30'
+                        }`}>
+                        {room.severity}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">ROOM #{room.id}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500">{room.time}</span>
+                  </div>
+
+                  <h4 className="font-bold text-slate-200 mb-1 group-hover:text-blue-400 transition-colors truncate">
+                    {room.title}
+                  </h4>
+                  <p className="text-xs text-slate-400 truncate mb-3">{room.lastMsg}</p>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex -space-x-2">
+                      {[1, 2, 3].map(i => (
+                        <div key={i} className="w-6 h-6 rounded-full bg-slate-800 border-2 border-[#11141d] flex items-center justify-center">
+                          <User className="w-3 h-3 text-slate-400" />
+                        </div>
+                      ))}
+                      <div className="w-6 h-6 rounded-full bg-blue-600/20 border-2 border-[#11141d] flex items-center justify-center">
+                        <span className="text-[8px] font-bold text-blue-400">+{room.participants - 3}</span>
+                      </div>
+                    </div>
+                    {room.unread && (
+                      <div className="bg-blue-600 text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">NEW</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Bottom Safe Area */}
+            <div className="pb-8 px-6 pt-2">
+              <button
+                onClick={() => navigate('/assignments')}
+                className="w-full py-4 rounded-2xl bg-slate-800 text-slate-400 font-bold text-sm hover:bg-slate-700 transition-colors"
+              >
+                전체 히스토리 보기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 w-full bg-[#0f111a] border-t border-white/10 px-6 py-3 flex justify-between items-center z-50 pb-safe">
         <div className="flex flex-col items-center space-y-1 text-blue-500 cursor-pointer" onClick={() => navigate('/dashboard')}>
-            <Home className="w-6 h-6 fill-current" />
-            <span className="text-[10px] font-medium">홈</span>
+          <Home className="w-6 h-6 fill-current" />
+          <span className="text-[10px] font-medium">홈</span>
         </div>
-        <div 
-          className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer" 
+        <div
+          className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer"
           onClick={() => setShowWarRoomPopup(true)}
         >
-            <MessageSquare className="w-6 h-6" />
-            <span className="text-[10px] font-medium">War-Room</span>
+          <MessageSquare className="w-6 h-6" />
+          <span className="text-[10px] font-medium">War-Room</span>
         </div>
         <div className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer" onClick={() => navigate('/activity')}>
-            <BarChart2 className="w-6 h-6" />
-            <span className="text-[10px] font-medium">활동</span>
+          <BarChart2 className="w-6 h-6" />
+          <span className="text-[10px] font-medium">활동</span>
         </div>
         <div className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer" onClick={() => navigate('/search')}>
-            <Search className="w-6 h-6" />
-            <span className="text-[10px] font-medium">검색</span>
+          <Search className="w-6 h-6" />
+          <span className="text-[10px] font-medium">검색</span>
         </div>
-        <div 
+        <div
           className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer"
           onClick={() => setShowMoreMenu(true)}
         >
-            <MoreHorizontal className="w-6 h-6" />
-            <span className="text-[10px] font-medium">더보기</span>
+          <MoreHorizontal className="w-6 h-6" />
+          <span className="text-[10px] font-medium">더보기</span>
         </div>
       </nav>
 
-       {/* More Menu Popup */}
-       {showMoreMenu && (
+      {/* More Menu Popup */}
+      {showMoreMenu && (
         <div className="fixed inset-0 z-[110] flex items-end justify-center animate-in fade-in duration-300">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setShowMoreMenu(false)} />
           <div className="w-full bg-[#1a1f2e] rounded-t-[40px] border-t border-white/10 shadow-2xl relative z-10 animate-in slide-in-from-bottom duration-500 overflow-hidden">
@@ -961,9 +959,9 @@ export default function DashboardPage() {
               <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-8" />
               <h3 className="text-xl font-bold text-white mb-2 text-center">시스템 관리 설정</h3>
               <p className="text-xs text-slate-500 text-center mb-10 uppercase tracking-[4px]">System Operations</p>
-              
+
               <div className="grid grid-cols-2 gap-4">
-                <div 
+                <div
                   onClick={() => {
                     setShowMoreMenu(false);
                     navigate('/keyword-management');
@@ -979,7 +977,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <div 
+                <div
                   onClick={() => {
                     setShowMoreMenu(false);
                     navigate('/report-line-management');
@@ -996,18 +994,18 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="p-8 pt-4 pb-12">
-               <button 
-                 onClick={() => setShowMoreMenu(false)}
-                 className="w-full py-4 rounded-2xl bg-white/5 text-slate-400 font-bold hover:bg-white/10 transition-colors"
-               >
-                 닫기
-               </button>
-             </div>
-           </div>
-         </div>
-       )}
+              <button
+                onClick={() => setShowMoreMenu(false)}
+                className="w-full py-4 rounded-2xl bg-white/5 text-slate-400 font-bold hover:bg-white/10 transition-colors"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
@@ -1038,8 +1036,8 @@ function MetricCard({ title, value, subValue, trend, trendUp, icon: Icon, color 
       <div>
         <h4 className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">{title}</h4>
         <div className="flex items-baseline space-x-2">
-           <span className="text-xl font-bold text-white">{value}</span>
-           {subValue && <span className="text-xs text-slate-500">{subValue}</span>}
+          <span className="text-xl font-bold text-white">{value}</span>
+          {subValue && <span className="text-xs text-slate-500">{subValue}</span>}
         </div>
       </div>
     </div>
@@ -1062,7 +1060,7 @@ function AlertItem({ title, time, severity, desc }) {
           <h4 className="font-bold text-sm text-slate-200 group-hover:text-white transition-colors">{title}</h4>
           <span className="text-xs text-slate-500 whitespace-nowrap ml-2">{time}</span>
         </div>
-         <p className="text-xs text-slate-400 leading-relaxed">{desc}</p>
+        <p className="text-xs text-slate-400 leading-relaxed">{desc}</p>
       </div>
     </div>
   );
@@ -1098,10 +1096,10 @@ function ProfileModalContent({ profile, onClose, onSave, navigate }) {
       <div className="absolute inset-0 bg-[#0f111a]/80 backdrop-blur-sm" onClick={() => {
         if (profile.dept && profile.team) onClose();
       }}></div>
-      
+
       <div className="relative w-full max-w-md bg-gradient-to-b from-[#1a1f2e] to-[#0f111a] border border-white/10 rounded-3xl shadow-2xl overflow-hidden animate-scale-up">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-cyan-400"></div>
-        
+
         <div className="p-8">
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-xl font-bold text-white flex items-center space-x-2">
@@ -1133,8 +1131,8 @@ function ProfileModalContent({ profile, onClose, onSave, navigate }) {
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">소속 (Department) *</label>
               <div className="relative group">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={tempDept}
                   onChange={(e) => setTempDept(e.target.value)}
                   placeholder="예: 보안운영본부"
@@ -1146,8 +1144,8 @@ function ProfileModalContent({ profile, onClose, onSave, navigate }) {
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">팀 (Team) *</label>
               <div className="relative group">
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={tempTeam}
                   onChange={(e) => setTempTeam(e.target.value)}
                   placeholder="예: AI관제팀"
@@ -1158,13 +1156,13 @@ function ProfileModalContent({ profile, onClose, onSave, navigate }) {
           </div>
 
           <div className="mt-10 flex flex-col space-y-3">
-            <button 
+            <button
               onClick={handleSave}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/40 transition-all transform active:scale-[0.98]"
             >
               저장하기 (Save)
             </button>
-            <button 
+            <button
               onClick={handleLogout}
               className="w-full bg-white/5 hover:bg-red-500/10 text-slate-400 hover:text-red-400 font-medium py-3 rounded-xl transition-all flex items-center justify-center space-x-1"
             >
@@ -1172,7 +1170,7 @@ function ProfileModalContent({ profile, onClose, onSave, navigate }) {
               <span>Logout</span>
             </button>
           </div>
-          
+
           {(!profile.dept || !profile.team) && (
             <p className="text-[10px] text-yellow-500/70 text-center mt-4">
               * 서비스 이용을 위해 소속과 팀 정보를 먼저 입력해 주세요.
