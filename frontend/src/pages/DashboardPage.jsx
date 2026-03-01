@@ -212,7 +212,7 @@ export default function DashboardPage() {
 
       const apiUrl = window.location.hostname === 'localhost'
         ? `http://localhost:8000/ai/agent-discussion/${smsMessage.id}`
-        : `https://api.chokerslab.store/ai/agent-discussion/${smsMessage.id}`;
+        : `https://sguard-sms-api.khcho0421.workers.dev/ai/agent-discussion/${smsMessage.id}`;
 
       const response = await fetch(apiUrl);
       if (!response.ok) throw new Error('Failed to fetch discussion');
@@ -774,8 +774,8 @@ export default function DashboardPage() {
                       <div className="flex justify-between items-start mb-1">
                         <div className="flex items-center gap-2 max-w-[70%]">
                           <span className={`text-[8px] font-black px-1 py-0.5 rounded border flex-shrink-0 ${item.assignmentType === 'AI'
-                              ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
-                              : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                            ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                            : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
                             }`}>
                             {item.assignmentType || 'AI'}
                           </span>

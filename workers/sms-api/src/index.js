@@ -210,41 +210,41 @@ export default {
           let lowerText = recentMessageText.toLowerCase();
 
           if (lowerText.includes("cpu") || lowerText.includes("메모리")) {
-             severity = "high";
-             type_str = "warning";
-             category = "server";
-             insight_text = `💡 [Insight] 수신된 SMS ('${shortText}') 기반 분석: 신한DS KMS 연동 LLM 분석 결과, 과거 배치 작업 중 발생한 서버 과부하 패턴과 98% 일치하며 시스템 강제종료가 예측됩니다.`;
+            severity = "high";
+            type_str = "warning";
+            category = "server";
+            insight_text = `💡 [Insight] 수신된 SMS ('${shortText}') 기반 분석: 신한DS KMS 연동 LLM 분석 결과, 과거 배치 작업 중 발생한 서버 과부하 패턴과 98% 일치하며 시스템 강제종료가 예측됩니다.`;
           } else if (lowerText.includes("db") || lowerText.includes("데이터베이스")) {
-             severity = "critical";
-             type_str = "error";
-             category = "database";
-             insight_text = `🚨 [Critical] 수신된 SMS ('${shortText}') 기반 분석: 신한DS KMS 연동 LLM 분석 결과, DB Connection Pool 고갈 패턴과 94% 일치. 결제 모듈 응답 지연 예측됨.`;
+            severity = "critical";
+            type_str = "error";
+            category = "database";
+            insight_text = `🚨 [Critical] 수신된 SMS ('${shortText}') 기반 분석: 신한DS KMS 연동 LLM 분석 결과, DB Connection Pool 고갈 패턴과 94% 일치. 결제 모듈 응답 지연 예측됨.`;
           } else if (lowerText.includes("네트워크") || lowerText.includes("network")) {
-             severity = "medium";
-             type_str = "insight";
-             category = "network";
-             insight_text = `⚠️ [Insight] 수신된 SMS ('${shortText}') 기반 분석: 신한DS KMS 연동 LLM 분석 결과, L4 스위치 트래픽 포화 상태 예측됨.`;
+            severity = "medium";
+            type_str = "insight";
+            category = "network";
+            insight_text = `⚠️ [Insight] 수신된 SMS ('${shortText}') 기반 분석: 신한DS KMS 연동 LLM 분석 결과, L4 스위치 트래픽 포화 상태 예측됨.`;
           } else {
-             insight_text = `🔍 [Insight] 수신된 SMS ('${shortText}') 기반 분석: 신한DS KMS 연동 LLM이 유사 사례를 분석 중입니다. 분석결과 일시적 발생 오류로 판단됩니다.`;
+            insight_text = `🔍 [Insight] 수신된 SMS ('${shortText}') 기반 분석: 신한DS KMS 연동 LLM이 유사 사례를 분석 중입니다. 분석결과 일시적 발생 오류로 판단됩니다.`;
           }
 
           let formattedTime = new Date(recentMessageTime).toLocaleString('ko-KR');
           currentLog = {
-             id: id_val,
-             type: type_str,
-             category: category,
-             severity: severity,
-             text: insight_text,
-             detail: `수신 시간: ${formattedTime}`
+            id: id_val,
+            type: type_str,
+            category: category,
+            severity: severity,
+            text: insight_text,
+            detail: `수신 시간: ${formattedTime}`
           };
         } else {
           currentLog = {
-             id: "SYS-000",
-             type: "info",
-             category: "report",
-             severity: "info",
-             text: "실시간 데이터 대기 중... 새로운 SMS를 기다리고 있습니다.",
-             detail: "신한DS KMS 연동 LLM 분석 대기 중"
+            id: "SYS-000",
+            type: "info",
+            category: "report",
+            severity: "info",
+            text: "실시간 데이터 대기 중... 새로운 SMS를 기다리고 있습니다.",
+            detail: "신한DS KMS 연동 LLM 분석 대기 중"
           };
         }
 
@@ -259,6 +259,21 @@ export default {
           {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           }
+        );
+      }
+
+      // S-Autopilot AI Agent Discussion (Mock)
+      if (path.startsWith('/ai/agent-discussion/') && request.method === 'GET') {
+        const idPath = path.split('/')[3];
+        const discussionLog = [
+          { role: "L1 Support Agent", content: "최근 접수된 알림을 확인했습니다. 시스템 로그 분석 결과를 요청합니다." },
+          { role: "DB Expert Agent", content: "KMS 연동 분석 결과, 데이터베이스 커넥션 풀 고갈 패턴이 확인되었습니다. 트랜잭션 지연이 예상됩니다." },
+          { role: "System Admin Agent", content: "동의합니다. 자동화된 런북(Runbook)을 통해 임시로 max_connections를 증설하고 담당자에게 Escalation을 진행합니다." }
+        ];
+
+        return new Response(
+          JSON.stringify(discussionLog),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 

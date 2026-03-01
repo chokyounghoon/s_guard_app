@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Brain, Sparkles, Activity, Cpu, Database, AlertTriangle, Server, Shield, FileText } from 'lucide-react';
 
 // API URL 설정
-const API_BASE_URL = window.location.hostname === 'localhost' 
+const API_BASE_URL = window.location.hostname === 'localhost'
   ? 'http://localhost:8000'
-  : 'https://api.chokerslab.store';
+  : 'https://sguard-sms-api.khcho0421.workers.dev';
 
 export default function AiInsightPanel({ onLogReceived, onShowDetail }) {
   const [insightData, setInsightData] = useState({
@@ -13,26 +13,26 @@ export default function AiInsightPanel({ onLogReceived, onShowDetail }) {
     accuracy: '0%',
     current_log: { type: 'info', text: 'AI 엔진 연결 중...' }
   });
-  
+
   const [displayedText, setDisplayedText] = useState('');
   const [isTyping, setIsTyping] = useState(true);
 
   const fetchInsight_API = async () => {
     try {
-      const API_URL = window.location.hostname === 'localhost' 
+      const API_URL = window.location.hostname === 'localhost'
         ? 'http://localhost:8000/ai/insight'
-        : 'https://api.chokerslab.store/ai/insight';
-        
+        : 'https://sguard-sms-api.khcho0421.workers.dev/ai/insight';
+
       const response = await fetch(API_URL);
       if (response.ok) {
         const data = await response.json();
         setInsightData(data);
-        
+
         // 부모 컴포넌트로 로그 데이터 및 예측 카운트 전달 (대시보드 카운팅용)
         if (onLogReceived && data.current_log) {
           onLogReceived(data.current_log, data.prediction_counts);
         }
-        
+
         return data.current_log.text;
       }
     } catch (error) {
@@ -43,14 +43,14 @@ export default function AiInsightPanel({ onLogReceived, onShowDetail }) {
 
   useEffect(() => {
     let charIndex = 0;
-    
+
     const startTypingCycle = async () => {
       // 1. 데이터 가져오기
       setIsTyping(true);
       setDisplayedText('');
-      
+
       const logText = await fetchInsight_API() || '분석 데이터 대기 중...';
-      
+
       // 2. 타이핑 효과
       const typingInterval = setInterval(() => {
         if (charIndex <= logText.length) {
@@ -59,7 +59,7 @@ export default function AiInsightPanel({ onLogReceived, onShowDetail }) {
         } else {
           clearInterval(typingInterval);
           setIsTyping(false);
-          
+
           // 3. 다음 주기로 넘어가기 전 대기 (5초 후 갱신)
           setTimeout(() => {
             charIndex = 0;
@@ -71,7 +71,7 @@ export default function AiInsightPanel({ onLogReceived, onShowDetail }) {
 
     startTypingCycle();
 
-    return () => {}; // Cleanup logic if needed
+    return () => { }; // Cleanup logic if needed
   }, []); // Run once on mount, loop internally
 
   const currentLog = insightData.current_log || { type: 'info' };
@@ -80,7 +80,7 @@ export default function AiInsightPanel({ onLogReceived, onShowDetail }) {
     <div className="bg-gradient-to-br from-[#1a1f2e] to-[#11141d] rounded-3xl p-6 border border-blue-500/20 shadow-xl relative overflow-hidden group">
       {/* 배경 장식 */}
       <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
-      
+
       <div className="flex items-start justify-between mb-4 relative z-10">
         <div className="flex items-center space-x-3">
           <div className="bg-blue-600/20 p-2.5 rounded-xl border border-blue-500/30">
@@ -97,13 +97,13 @@ export default function AiInsightPanel({ onLogReceived, onShowDetail }) {
             <p className="text-xs text-slate-400">실시간 인공지능 분석 스트림</p>
           </div>
         </div>
-        
+
         {/* 상태 뱃지 */}
         <div className="flex items-center space-x-2">
-           <div className="bg-[#0f111a] px-3 py-1.5 rounded-lg border border-white/5 flex items-center space-x-2">
-             <Activity className="w-3 h-3 text-emerald-500" />
-             <span className="text-xs text-slate-300 font-mono">LIVE</span>
-           </div>
+          <div className="bg-[#0f111a] px-3 py-1.5 rounded-lg border border-white/5 flex items-center space-x-2">
+            <Activity className="w-3 h-3 text-emerald-500" />
+            <span className="text-xs text-slate-300 font-mono">LIVE</span>
+          </div>
         </div>
       </div>
 
@@ -111,19 +111,19 @@ export default function AiInsightPanel({ onLogReceived, onShowDetail }) {
       <div className="bg-[#0a0c10] rounded-xl p-4 border border-white/5 font-mono text-sm h-28 flex items-center relative shadow-inner">
         {/* 스캔 라인 효과 */}
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-blue-500/5 to-transparent h-full w-full pointer-events-none animate-scanline" />
-        
+
         <div className="w-full">
-           <div className="flex items-start space-x-2">
-             <span className="text-blue-500 mt-0.5">❯</span>
-             <p className={`
-               ${currentLog.type === 'insight' ? 'text-yellow-300 font-bold' : 
-                 currentLog.type === 'warning' ? 'text-orange-400' : 
-                 currentLog.type === 'success' ? 'text-emerald-400' : 'text-blue-200'}
+          <div className="flex items-start space-x-2">
+            <span className="text-blue-500 mt-0.5">❯</span>
+            <p className={`
+               ${currentLog.type === 'insight' ? 'text-yellow-300 font-bold' :
+                currentLog.type === 'warning' ? 'text-orange-400' :
+                  currentLog.type === 'success' ? 'text-emerald-400' : 'text-blue-200'}
              `}>
-               {displayedText}
-               <span className="animate-blink inline-block w-2 h-4 bg-blue-500/50 align-middle ml-1"></span>
-             </p>
-           </div>
+              {displayedText}
+              <span className="animate-blink inline-block w-2 h-4 bg-blue-500/50 align-middle ml-1"></span>
+            </p>
+          </div>
         </div>
       </div>
     </div>
