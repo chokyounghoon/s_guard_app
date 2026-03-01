@@ -228,6 +228,49 @@ export default {
         });
       }
 
+      // ── AI Chat (S-Autopilot Agent) ──────────────────────────────────────────
+      if (path === '/ai/chat' && request.method === 'POST') {
+        const body = await request.json();
+        const { query } = body;
+
+        // 1. 로컬 백엔드 프록시 (BACKEND_URL 설정된 경우)
+        if (env.BACKEND_URL) {
+          try {
+            const backendRes = await fetch(`${env.BACKEND_URL}/ai/chat`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query })
+            });
+            if (backendRes.ok) {
+              const data = await backendRes.json();
+              return new Response(JSON.stringify(data), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+              });
+            }
+          } catch (e) {
+            console.error('[Proxy] Chat proxy failed:', e);
+          }
+        }
+
+        // 2. Mock fallback
+        const lowerQuery = (query || '').toLowerCase();
+        let response = '';
+        if (lowerQuery.includes('db') || lowerQuery.includes('database') || lowerQuery.includes('데이터베이스')) {
+          response = '데이터베이스 관련 문제를 분석합니다. DB Connection Pool 고갈이 의심됩니다. 우선 `SHOW PROCESSLIST` 명령으로 현재 접속 수를 확인하고, max_connections 설정을 검토하세요.';
+        } else if (lowerQuery.includes('cpu') || lowerQuery.includes('메모리') || lowerQuery.includes('memory')) {
+          response = 'CPU/메모리 과부하 상황입니다. `top` 또는 `htop` 명령으로 프로세스를 확인하고, 비정상적으로 높은 사용률을 보이는 프로세스를 재시작하세요.';
+        } else if (lowerQuery.includes('timeout') || lowerQuery.includes('타임아웃')) {
+          response = '네트워크 타임아웃이 감지되었습니다. 게이트웨이 설정과 L4 스위치 상태를 점검하고, 서비스 간 응답 시간을 모니터링하세요.';
+        } else {
+          response = `"${query}"에 대한 질의를 수신했습니다. 현재 로컬 LLM 백엔드 연결 중입니다. 로컬 Docker를 시작하시면 RAG 기반 정밀 분석을 제공해 드립니다.`;
+        }
+
+        return new Response(
+          JSON.stringify({ response, related_logs: [] }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       // ── KMS Report Save ───────────────────────────────────────────────────────
       if (path === '/ai/report/save' && request.method === 'POST') {
         // 로컬 백엔드 프록시 (BACKEND_URL 설정된 경우)

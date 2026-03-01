@@ -3,13 +3,13 @@ import { Bot, X, Send, Sparkles, Server, Activity } from 'lucide-react';
 
 const API_BASE_URL = window.location.hostname === 'localhost'
   ? 'http://localhost:8000'
-  : 'https://api.chokerslab.store';
+  : 'https://sguard-sms-api.khcho0421.workers.dev';
 
 export default function AiChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { 
-      type: 'ai', 
+    {
+      type: 'ai',
       text: '안녕하세요! S-Guard AI 에이전트입니다. 👋\n서버 로그나 시스템 상태에 대해 무엇이든 물어보세요.',
       logs: []
     }
@@ -44,8 +44,8 @@ export default function AiChatWidget() {
 
       if (response.ok) {
         const data = await response.json();
-        setMessages(prev => [...prev, { 
-          type: 'ai', 
+        setMessages(prev => [...prev, {
+          type: 'ai',
           text: data.response,
           logs: data.related_logs || []
         }]);
@@ -54,8 +54,8 @@ export default function AiChatWidget() {
       }
     } catch (error) {
       console.error('Chat Error:', error);
-      setMessages(prev => [...prev, { 
-        type: 'ai', 
+      setMessages(prev => [...prev, {
+        type: 'ai',
         text: '죄송합니다. 서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.',
         logs: []
       }]);
@@ -66,7 +66,7 @@ export default function AiChatWidget() {
 
   return (
     <div className="fixed bottom-24 right-6 z-50 flex flex-col items-end">
-      
+
       {/* Chat Window */}
       {isOpen && (
         <div className="mb-4 w-96 max-w-[calc(100vw-3rem)] h-[500px] bg-[#0f1421] rounded-3xl border border-blue-500/20 shadow-2xl shadow-blue-900/40 flex flex-col overflow-hidden animate-slide-up-fade origin-bottom-right">
@@ -87,7 +87,7 @@ export default function AiChatWidget() {
                 </div>
               </div>
             </div>
-            <button 
+            <button
               onClick={() => setIsOpen(false)}
               className="p-1.5 rounded-full hover:bg-white/10 transition-colors text-white"
             >
@@ -98,8 +98,8 @@ export default function AiChatWidget() {
           {/* Messages Area */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
             {messages.map((msg, idx) => (
-              <div 
-                key={idx} 
+              <div
+                key={idx}
                 className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start items-start space-x-3'}`}
               >
                 {msg.type === 'ai' && (
@@ -107,18 +107,17 @@ export default function AiChatWidget() {
                     <Sparkles className="w-4 h-4 text-white" />
                   </div>
                 )}
-                
+
                 <div className={`max-w-[80%] space-y-2`}>
-                  <div 
-                    className={`p-3.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
-                      msg.type === 'user' 
-                        ? 'bg-blue-600 text-white rounded-tr-none shadow-lg shadow-blue-900/20' 
+                  <div
+                    className={`p-3.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${msg.type === 'user'
+                        ? 'bg-blue-600 text-white rounded-tr-none shadow-lg shadow-blue-900/20'
                         : 'bg-[#1a1f2e] text-slate-200 border border-white/5 rounded-tl-none'
-                    }`}
+                      }`}
                   >
                     {msg.text}
                   </div>
-                  
+
                   {/* Related Logs (AI Only) */}
                   {msg.type === 'ai' && msg.logs && msg.logs.length > 0 && (
                     <div className="bg-black/30 rounded-xl border border-white/5 p-3 text-[10px] font-mono overflow-hidden">
@@ -138,19 +137,19 @@ export default function AiChatWidget() {
                 </div>
               </div>
             ))}
-            
+
             {isLoading && (
               <div className="flex justify-start items-center space-x-3">
-                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-lg">
-                    <Bot className="w-4 h-4 text-white animate-pulse" />
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-lg">
+                  <Bot className="w-4 h-4 text-white animate-pulse" />
+                </div>
+                <div className="bg-[#1a1f2e] p-3 rounded-2xl rounded-tl-none border border-white/5">
+                  <div className="flex space-x-1">
+                    <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                    <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                    <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce"></div>
                   </div>
-                 <div className="bg-[#1a1f2e] p-3 rounded-2xl rounded-tl-none border border-white/5">
-                    <div className="flex space-x-1">
-                      <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                      <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                      <div className="w-1.5 h-1.5 bg-slate-500 rounded-full animate-bounce"></div>
-                    </div>
-                 </div>
+                </div>
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -158,15 +157,15 @@ export default function AiChatWidget() {
 
           {/* Input Area */}
           <form onSubmit={handleSendMessage} className="p-3 bg-[#0f1421] border-t border-white/5 flex items-center space-x-2">
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="서버 상태나 로그에 대해 물어보세요..." 
+              placeholder="서버 상태나 로그에 대해 물어보세요..."
               className="flex-1 bg-[#1a1f2e] text-white text-sm rounded-xl py-3 px-4 focus:outline-none focus:ring-1 focus:ring-blue-500/50 border border-white/5 placeholder:text-slate-500"
               autoFocus
             />
-            <button 
+            <button
               type="submit"
               disabled={!inputText.trim() || isLoading}
               className="p-3 bg-blue-600 rounded-xl text-white hover:bg-blue-500 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20"
@@ -187,18 +186,18 @@ export default function AiChatWidget() {
         aria-label="S-Autopilot 호출"
       >
         {!isOpen && (
-            <>
-                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 rounded-full" />
-                <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                </span>
-            </>
+          <>
+            <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 rounded-full" />
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+            </span>
+          </>
         )}
         {isOpen ? (
-            <X className="w-8 h-8 text-white" />
+          <X className="w-8 h-8 text-white" />
         ) : (
-            <Bot className="w-8 h-8 text-white animate-pulse-slow" />
+          <Bot className="w-8 h-8 text-white animate-pulse-slow" />
         )}
       </button>
     </div>
