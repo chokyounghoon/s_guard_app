@@ -12,37 +12,34 @@ services:
     volumes:
       - sguard_postgres_data:/var/lib/postgresql/data
 
+  chroma:
+    image: chromadb/chroma
+    container_name: sguard-chroma
+    restart: always
+    ports:
+      - "8001:8000"
+    volumes:
+      - sguard_chroma_data:/chroma/chroma
+
+  tomcat:
+    image: tomcat:10-jdk17
+    container_name: sguard-tomcat
+    restart: always
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend/tomcat_webapps:/usr/local/tomcat/webapps
+    environment:
+      - JAVA_OPTS=-Dfile.encoding=UTF-8
+
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama
     container_name: sguard-ollama
+    restart: always
     ports:
       - "11434:11434"
     volumes:
       - sguard_ollama_data:/root/.ollama
-    restart: always
-
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: sguard-chromadb
-    ports:
-      - "8001:8000"
-    volumes:
-      - sguard_chromadb_data:/chroma/chroma
-    environment:
-      - IS_PERSISTENT=TRUE
-      - CHROMA_SERVER_CORS_ALLOW_ORIGINS=["*"]
-    restart: always
-
-  chroma-ui:
-    image: jmk7117/chroma-ui:latest
-    container_name: sguard-chroma-ui
-    environment:
-      - CHROMA_URL=http://chromadb:8000
-    ports:
-      - "8002:3000"
-    depends_on:
-      - chromadb
-    restart: always
 
   backend:
     build: ./backend
@@ -99,4 +96,4 @@ services:
 volumes:
   sguard_postgres_data:
   sguard_ollama_data:
-  sguard_chromadb_data:
+  sguard_chroma_data:

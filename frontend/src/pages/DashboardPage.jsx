@@ -198,40 +198,64 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [systemStatus]);
 
-  const startDemoScenario = () => {
+  const startLiveScenario = async (smsMessage) => {
+    if (!smsMessage) return;
     setSystemStatus('critical');
     setShowAgentPanel(true);
-    
-    // Agent Coversation Sequence
-    const sequence = [
-      { role: 'Security', text: '⚠️ 비정상적인 트래픽 급증 감지! IP 평판 조회 중...', delay: 1000 },
-      { role: 'Security', text: '✅ 보안이슈로 발생한 장애 수신은 아님, 보안 이슈 없음', delay: 3000 },
-      { role: 'DB', text: '🚨 DB 커넥션 풀 급격히 포화 중! (사용률 92%(문자))', delay: 5000 },
-      { role: 'DB', text: '🔍 원인 규명 중... KMS 내 동일 오류및 처리 히스토리 확인 `orders` 테이블에서 슬로우 쿼리로 발견. 인덱스 누락 의심되어 처리된 이력 존재', delay: 7000 },
-      { role: 'DevOps', text: '🔥 WAS-03 CPU 부하 임계치 초과 (95%). 애플리케이션 응답 지연 발생.', delay: 9000 },
-      { role: 'DevOps', text: '비정상 인스턴스 재시작 및 DB 풀 플러시 승인 요청.', delay: 11000 },
-      { role: 'Leader', text: '상황 분석 중... 보안 이상 무. DB 병목 확인됨. 인프라 상태 위급.', delay: 13000 },
-      { role: 'Leader', text: '💡 결정: 서비스 복구를 위해 WAS-Cluster-03 즉시 재기동 제안.', delay: 15000 },
-    ];
+    setAgentMessages([]); // 초기화
 
-    let currentStep = 0;
-    
-    const runSequence = () => {
-      if (currentStep < sequence.length) {
-        const step = sequence[currentStep];
-        setTimeout(() => {
-          setAgentMessages(prev => [...prev, step]);
-          currentStep++;
-          runSequence();
-        }, step.delay - (currentStep > 0 ? sequence[currentStep-1].delay : 0));
-      } else {
-        setTimeout(() => {
-            setShowEmergencyModal(true);
-        }, 2000);
-      }
-    };
+    try {
+      // 1. Loading Text 표시
+      setAgentMessages([
+        { role: 'Security', text: '🔍 새로운 장애 로그 수신. 과거 사례 (RAG) 검색 및 분석을 시작합니다...', delay: 0 }
+      ]);
 
-    runSequence();
+      const apiUrl = window.location.hostname === 'localhost' 
+        ? `http://localhost:8000/ai/agent-discussion/${smsMessage.id}`
+        : `https://api.chokerslab.store/ai/agent-discussion/${smsMessage.id}`;
+      
+      const response = await fetch(apiUrl);
+      if (!response.ok) throw new Error('Failed to fetch discussion');
+      
+      const data = await response.json();
+      const discussion = data.discussion || [];
+
+      // 2. 받아온 대본을 순차적으로 렌더링
+      let currentStep = 0;
+      const runSequence = () => {
+        if (currentStep < discussion.length) {
+          const step = discussion[currentStep];
+          setTimeout(() => {
+            setAgentMessages(prev => [...prev, {
+              role: step.role,
+              text: step.text,
+              delay: 0
+            }]);
+            currentStep++;
+            runSequence();
+          }, 1500); // 1.5초 간격으로 말풍선 생성
+        } else {
+          // 토론이 끝나면 조치 모달 트리거
+          setTimeout(() => {
+              setShowEmergencyModal(true);
+          }, 2000);
+        }
+      };
+
+      // 첫 로딩 말풍선 지우고 시작하려면 setTimeout을 살짝 주고 덮어씌워도 되나, 자연스럽게 이어가기 위해 그냥 실행
+      setTimeout(() => {
+         // (선택) 로딩 메시지를 제거하고 싶다면 여기서 필터링 가능
+         runSequence();
+      }, 1000);
+
+    } catch (err) {
+      console.error("Discussion load error:", err);
+      // Fallback
+      setAgentMessages([
+        { role: 'Leader', text: '오류 분석 서버 응답 지연. 수동 조치 프로토콜을 가동하십시오.', delay: 0 }
+      ]);
+      setTimeout(() => setShowEmergencyModal(true), 2000);
+    }
   };
 
   const handleApproveAction = () => {
@@ -568,36 +592,42 @@ export default function DashboardPage() {
               Live Incident Stream
             </h3>
             <div className="space-y-4">
-              {systemStatus === 'critical' && (
-                  <div onClick={startDemoScenario} className="cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99]">
+              {smsMessages.slice(0, 5).map((msg) => {
+                let severity = 'info';
+                let title = 'System Report';
+                const lowerText = (msg.message || '').toLowerCase();
+                
+                if (lowerText.includes('critical') || lowerText.includes('db') || lowerText.includes('데이터베이스')) {
+                  severity = 'critical';
+                  title = 'Critical Process Error';
+                } else if (lowerText.includes('err') || lowerText.includes('cpu') || lowerText.includes('메모리')) {
+                  severity = 'warning';
+                  title = 'System Overload Warning';
+                }
+
+                // 방금 들어온(최근 15분) 항목인지 체크 (UI 하이라이트용)
+                const isRecent = (new Date() - new Date(msg.timestamp)) < 15 * 60 * 1000;
+
+                return (
+                  <div key={msg.id} onClick={() => startLiveScenario(msg)} className="cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99] relative">
+                    {/* 반짝이는 표시기 */}
+                    {isRecent && <div className="absolute top-2 right-2 w-2 h-2 bg-blue-500 rounded-full animate-ping z-10" />}
+                    
                     <AlertItem 
-                        title="High Latency detected on WAS-03" 
-                        time="Now" 
-                        severity="critical"
-                        desc="Response time exceeded threshold (2000ms > 500ms)"
+                        title={title}
+                        time={new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 
+                        severity={severity}
+                        desc={msg.message}
                     />
                   </div>
+                );
+              })}
+              
+              {smsMessages.length === 0 && (
+                 <div className="text-center text-slate-500 text-sm py-4">
+                   Waiting for incoming incidents...
+                 </div>
               )}
-              <div onClick={startDemoScenario} className="cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99]">
-                <AlertItem 
-                    title="API Gateway Latency Spike" 
-                    time="2m ago" 
-                    severity="warning"
-                    desc="Intermittent latency observed in region ap-northeast-2"
-                />
-              </div>
-              <AlertItem 
-                title="Database Backup Completed" 
-                time="1h ago" 
-                severity="info"
-                desc="Daily incremental backup finished successfully (12.4GB)"
-              />
-              <AlertItem 
-                title="New Deployment: Frontend v2.4" 
-                time="3h ago" 
-                severity="success"
-                desc="Successfully deployed by CI/CD pipeline #8821"
-              />
             </div>
           </div>
 
@@ -621,18 +651,18 @@ export default function DashboardPage() {
                     </div>
                     
                     <div className="space-y-3">
-                        {/* Demo Trigger Item */}
-                        <div onClick={startDemoScenario} className="bg-[#11141d] p-4 rounded-xl border border-red-500/20 cursor-pointer hover:bg-[#1a1f2e] hover:border-red-500/50 transition-all group relative overflow-hidden">
+                        {/* Dynamic Active AI Scenario Item (Optional rendering logic if you want to show running scenario here too) */}
+                        <div onClick={() => {}} className="bg-[#11141d] p-4 rounded-xl border border-red-500/20 cursor-pointer hover:bg-[#1a1f2e] hover:border-red-500/50 transition-all group relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
                             <div className="flex justify-between items-center mb-1">
-                                <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">CRITICAL</span>
-                                <span className="text-[10px] text-slate-500">Just now</span>
+                                <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">AGENT LOG</span>
+                                <span className="text-[10px] text-slate-500">Live</span>
                             </div>
-                            <h4 className="font-bold text-sm text-slate-200 mb-1 group-hover:text-red-400 transition-colors">WAS-03 Response Latency</h4>
-                            <p className="text-xs text-slate-500 mb-2 line-clamp-1">CPU load &gt; 95%, DB Conn saturation.</p>
+                            <h4 className="font-bold text-sm text-slate-200 mb-1 group-hover:text-red-400 transition-colors">실시간 다중 에이전트 분석 중</h4>
+                            <p className="text-xs text-slate-500 mb-2 line-clamp-1">좌측 Incident 목록을 클릭하여 회의를 시작하세요.</p>
                             <div className="flex justify-end">
                                 <span className="text-[10px] text-blue-400 font-bold flex items-center group-hover:underline">
-                                    승인 필요 <ChevronRight className="w-3 h-3 ml-0.5" />
+                                    대기 중 <ChevronRight className="w-3 h-3 ml-0.5" />
                                 </span>
                             </div>
                         </div>
