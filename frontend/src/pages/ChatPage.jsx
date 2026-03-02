@@ -25,51 +25,76 @@ export default function ChatPage() {
   ];
 
   // Main Chat State
-  const [mainMessages, setMainMessages] = useState([
-    {
-      id: 1,
-      type: 'other',
-      sender: '정도현 팀장',
-      role: 'Team Leader',
-      initials: 'JD',
-      color: 'bg-slate-700',
-      text: '현재 Server-02에서 포트 8080 타임아웃 오류가 발생했습니다. 확인 가능하신 분 있나요?',
-      time: '13:42'
-    },
-    {
-      id: 2,
-      type: 'other',
-      sender: '시스템 어드민',
-      role: 'Admin',
-      initials: 'SA',
-      color: 'bg-blue-900/40 border border-blue-500/20 text-blue-400',
-      text: '네, 로그 확인 결과 아래와 같은 오류가 발생하고 있습니다.',
-      time: '13:45'
-    },
-    {
-      id: 3,
-      type: 'other',
-      sender: '시스템 어드민',
-      role: 'Admin',
-      initials: 'SA',
-      color: 'bg-blue-900/40 border border-blue-500/20 text-blue-400',
-      text: '상단 로그 배너를 참고해주세요. DB Connection Pool 이슈로 보입니다.',
-      time: '13:45'
-    },
-    {
-      id: 4,
-      type: 'me',
-      text: '제가 지금 유휴 세션 초기화 작업 진행하겠습니다. 작업 완료 후 보고 드리겠습니다.',
-      time: '13:46'
-    },
-    {
-      id: 5,
-      type: 'system',
-      text: '사용자가 <span class="text-blue-400 font-semibold underline underline-offset-4 decoration-blue-500/40">임시 복구 작업</span>을 시작했습니다.',
-      icon: Info
-    }
-  ]);
+  const [mainMessages, setMainMessages] = useState([]);
   const [mainInput, setMainInput] = useState('');
+  const incidentId = 'INC-8823'; // Hardcoded for demo
+  const currentUser = { name: '이수민 매니저', role: 'Manager' }; // Hardcoded current user
+
+  // Load chat history on mount
+  React.useEffect(() => {
+    const fetchChatHistory = async () => {
+      try {
+        const res = await fetch(`http://localhost:8000/warroom/chat/${incidentId}`);
+        if (res.ok) {
+          const data = await res.json();
+          const loadedMessages = data.messages.map(msg => ({
+            id: msg.id,
+            type: msg.type === 'me' || msg.sender === currentUser.name ? 'me' : 
+                 (msg.type === 'system' ? 'system' : 'other'),
+            sender: msg.sender,
+            role: msg.role,
+            initials: msg.sender ? msg.sender.substring(0, 2) : 'SY',
+            color: 'bg-slate-700', // Simplify colors for now
+            text: msg.text,
+            time: new Date(msg.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+            icon: msg.type === 'system' ? Info : null
+          }));
+          
+          if (loadedMessages.length === 0) {
+            // Seed initial greeting if empty
+            saveChatToDb({
+              incident_id: incidentId,
+              sender: '시스템',
+              role: 'System',
+              type: 'system',
+              text: 'War-Room 채팅방이 생성되었습니다. 모든 대화 내용은 장애 해결 시 AI 학습에 사용됩니다.'
+            });
+          } else {
+            setMainMessages(loadedMessages);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load chat history", err);
+      }
+    };
+    fetchChatHistory();
+  }, [incidentId]);
+
+  const saveChatToDb = async (messageData) => {
+    try {
+      const res = await fetch('http://localhost:8000/warroom/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(messageData)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        const newMessage = {
+          id: saved.id || Date.now(),
+          type: messageData.type === 'me' ? 'me' : (messageData.type === 'system' ? 'system' : 'other'),
+          sender: messageData.sender,
+          role: messageData.role,
+          initials: messageData.sender.substring(0, 2),
+          color: messageData.type === 'system' ? 'bg-indigo-600' : 'bg-slate-700',
+          text: messageData.text,
+          time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+        };
+        setMainMessages(prev => [...prev, newMessage]);
+      }
+    } catch (err) {
+      console.error("Failed to save chat", err);
+    }
+  };
 
   const handleCall = (phoneNumber) => {
     window.location.href = `tel:${phoneNumber}`;
@@ -83,55 +108,6 @@ export default function ChatPage() {
     { id: 'history', label: '유사 장애 이력 찾아줘', icon: FileText },
     { id: 'action', label: '조치 방법 추천해줘', icon: Zap }
   ];
-
-  const detectIntent = (message) => {
-    const lowerMessage = message.toLowerCase();
-    if (lowerMessage.includes('상태') || lowerMessage.includes('어때') || lowerMessage.includes('괜찮')) return 'status';
-    if (lowerMessage.includes('에러') || lowerMessage.includes('왜') || lowerMessage.includes('원인')) return 'error';
-    if (lowerMessage.includes('전에') || lowerMessage.includes('과거') || lowerMessage.includes('이전') || lowerMessage.includes('이력')) return 'history';
-    if (lowerMessage.includes('어떻게') || lowerMessage.includes('조치') || lowerMessage.includes('해결') || lowerMessage.includes('방법')) return 'action';
-    if (lowerMessage.includes('cpu') || lowerMessage.includes('높')) return 'cpu_analysis';
-    if (lowerMessage.includes('db') || lowerMessage.includes('데이터베이스') || lowerMessage.includes('connection')) return 'db_analysis';
-    return 'general';
-  };
-
-  const getAIResponse = (intent, userMessage) => {
-    const responses = {
-      status: {
-        text: "결제 서버 현재 상태를 확인했습니다.\n\n**✅ 정상 운영 중**\n- CPU: 68% (안정)\n- Memory: 72% (안정)\n- Response Time: 180ms (평균)\n- Error Rate: 0.02%\n\n지난 1시간 동안 특이사항 없습니다.",
-        metrics: { cpu: 68, memory: 72, responseTime: 180 },
-        confidence: 98
-      },
-      error: {
-        text: "Timeout 에러의 원인을 분석했습니다.\n\n**에러 타입**: DB Connection Timeout\n**발생 빈도**: 지난 1시간 동안 47건\n\n**주요 원인**:\n- Connection Pool 고갈 (현재 95% 사용 중)\n- 장기 실행 쿼리 3건 감지 (평균 15초 소요)\n\n**유사 사례**: 3개월 전 [INC-2025-11-15] 사례와 95% 일치",
-        confidence: 95
-      },
-      history: {
-        text: "과거 유사 장애 이력을 검색했습니다.\n\n**🔍 검색 결과: 4건**\n\n**1. DB Connection Pool 고갈** (95% 유사)\n- 발생: 2025-11-15 14:32\n- 조치: Pool Size 200→500 증설\n- 해결 시간: 23분\n\n**2. 배치 프로세스 무한 루프** (88% 유사)\n- 발생: 2025-09-22 09:15\n- 조치: 루프 탈출 조건 추가\n- 해결 시간: 1시간 15분\n\nAI Report 페이지에서 전체 이력을 확인하실 수 있습니다.",
-        confidence: 92
-      },
-      action: {
-        text: "권장 조치 방법을 제시합니다.\n\n**🛠️ 단계별 조치 가이드**\n\n**1️⃣ 즉시 조치 (긴급)**\n```bash\n# Connection Pool 임시 증설\nvim /etc/app/database.conf\nmax_connections=500\nsudo systemctl restart app-server\n```\n\n**2️⃣ 근본 원인 해결**\n```bash\n# 느린 쿼리 확인\nmysql -e \"SHOW FULL PROCESSLIST;\"\n# 장기 실행 세션 종료\nmysql -e \"KILL <session_id>;\"\n```\n\n**3️⃣ 모니터링 강화**\n- Connection Pool 사용률 알림 설정 (>85%)\n- 쿼리 실행 시간 로깅 활성화\n\n**⏱️ 예상 소요 시간**: 15~20분",
-        confidence: 94
-      },
-      cpu_analysis: {
-        text: "CPU 사용률 급증 원인을 다각도로 분석했습니다.\n\n**🔍 분석 결과**:\n**1. 프로세스**: `batch_processor_v2`가 CPU 92% 점유\n**2. 패턴**: 무한 루프 의심 (메모리 증가 + CPU 고정)\n**3. 시작 시간**: 약 15분 전 (14:17경)\n\n**🛠️ 권장 조치 순서**:\n**1️⃣ 프로세스 상태 확인**\n```bash\nps aux | grep batch_processor\ntop -p $(pgrep batch_processor)\n```\n\n**2️⃣ 로그 확인**\n```bash\ntail -f /var/log/batch_errors.log\n```\n\n**3️⃣ 긴급 대응 (심각 시)**\n```bash\nsudo systemctl restart batch_processor_v2\n```\n\n**⏱️ 조치 안하면**: 5~10분 내 서비스 중단 가능성 85%",
-        metrics: { cpu: 92, memory: 78, responseTime: 350 },
-        confidence: 95
-      },
-      db_analysis: {
-        text: "DB 서버 상태를 실시간 분석했습니다.\n\n**⚠️ 주의 필요**\n- Connection Pool: 85% (높음)\n- Active Connections: 170/200\n- Slow Query Count: 23건 (지난 10분)\n- Lock Wait Time: 평균 2.3초\n\n**권장 조치**: Connection Pool 크기 증설을 고려하세요.\n```bash\n# /etc/mysql/my.cnf\nmax_connections=400\nwait_timeout=300\n```\n\n**예상 효과**: 병목 현상 해소, 응답 시간 30% 개선",
-        metrics: { cpu: 45, memory: 52, responseTime: 850 },
-        confidence: 97
-      },
-      general: {
-        text: `"${userMessage}"에 대한 정보를 찾고 있습니다.\n\n현재 War-Room에서 다루고 있는 **INC-8823 (CRITICAL)** 장애와 관련된 정보를 제공해 드릴 수 있습니다.\n\n다음과 같은 질문을 시도해 보세요:\n- "현재 서버 상태 어때?"\n- "이 에러 왜 나는 거야?"\n- "DB 연결 풀 어떻게 늘려?"\n- "CPU가 높은 이유가 뭐야?"`,
-        confidence: 85
-      }
-    };
-
-    return responses[intent] || responses.general;
-  };
 
   const handleAIMessage = async (message) => {
     if (!message.trim()) return;
@@ -165,7 +141,7 @@ export default function ChatPage() {
       const aiMessage = {
         type: 'ai',
         text: data.response,
-        // We can structure the AI response and optionally add 'related_logs' logic if needed
+        logs: data.related_logs || [],
         timestamp: new Date()
       };
 
@@ -193,26 +169,53 @@ export default function ChatPage() {
   };
 
   const handleShareToTeam = (text) => {
-    const newMessage = {
-      id: Date.now(),
+    const shareText = `[AI Analysis Shared]\n\n${text}`;
+    saveChatToDb({
+      incident_id: incidentId,
+      sender: currentUser.name,
+      role: currentUser.role,
       type: 'me',
-      text: `[AI Analysis Shared]\n\n${text}`,
-      time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
-    };
-    setMainMessages(prev => [...prev, newMessage]);
+      text: shareText
+    });
     setShowAIAssistant(false);
   };
 
   const handleMainSendMessage = () => {
     if (!mainInput.trim()) return;
-    const newMessage = {
-      id: Date.now(),
+    saveChatToDb({
+      incident_id: incidentId,
+      sender: currentUser.name,
+      role: currentUser.role,
       type: 'me',
-      text: mainInput,
-      time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
-    };
-    setMainMessages(prev => [...prev, newMessage]);
+      text: mainInput
+    });
     setMainInput('');
+  };
+
+  const handleResolveIncident = async () => {
+    if (!confirm('이 장애 상황을 해결(Resolve) 처리하고 해당 대화 내용을 AI RAG Knowledge Base에 학습시키겠습니까?')) return;
+    
+    try {
+      const res = await fetch(`http://localhost:8000/warroom/resolve/${incidentId}`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(`성공: ${data.message} (${data.message_count_processed}개의 메시지 학습됨)`);
+        saveChatToDb({
+          incident_id: incidentId,
+          sender: '시스템',
+          role: 'System',
+          type: 'system',
+          text: `장애 처리가 완료되어 전체 대화 내용이 RAG AI Knowledge Base에 성공적으로 학습되었습니다!`
+        });
+      } else {
+        alert('학습 중 오류가 발생했습니다.');
+      }
+    } catch (err) {
+      console.error('Resolve failed', err);
+      alert('서버와의 통신에 실패했습니다.');
+    }
   };
 
   return (
@@ -498,11 +501,11 @@ export default function ChatPage() {
       {/* New Analysis Action Bar */}
       <div className="px-4 pb-2 bg-[#0f1421]">
         <button 
-            onClick={() => navigate('/ai-process-report')}
-            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-900/30 flex items-center justify-center space-x-2 transition-all active:scale-[0.98]"
+            onClick={handleResolveIncident}
+            className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-900/30 flex items-center justify-center space-x-2 transition-all active:scale-[0.98]"
         >
             <Settings className="w-5 h-5 animate-spin-slow" />
-            <span>AI 처리 분석 및 결과 보고서 생성</span>
+            <span>장애 해결(Resolve) 및 AI에 학습시키기</span>
         </button>
       </div>
 

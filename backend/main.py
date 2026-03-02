@@ -113,6 +113,16 @@ class KeywordDB(Base):
     keyword = Column(String(50), primary_key=True)
     response = Column(Text)
 
+class WarRoomChatDB(Base):
+    __tablename__ = "warroom_chats"
+    id = Column(Integer, primary_key=True, index=True)
+    incident_id = Column(String(50), index=True)
+    sender = Column(String(50))
+    role = Column(String(50), nullable=True)
+    type = Column(String(20), default='user') # 'user', 'ai', 'system'
+    text = Column(Text)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
 # 테이블 생성 및 연결 대기
 import time
 def init_db_with_retry():
@@ -706,6 +716,93 @@ async def save_ai_report(req: ReportSaveRequest):
         return {"status": "success", "message": "보고서가 성공적으로 KMS에 저장(임베딩)되었습니다.", "doc_id": doc_id}
     except Exception as e:
         logger.error(f"KMS 저장 중 오류 발생: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- War-Room Chat Endpoints ---
+
+class WarRoomMessage(BaseModel):
+    incident_id: str
+    sender: str
+    role: Optional[str] = "User"
+    type: str = "user"
+    text: str
+
+@app.post("/warroom/chat")
+async def save_warroom_chat(msg: WarRoomMessage, db: Session = Depends(get_db)):
+    """Save a single message from the War-Room"""
+    chat_db = WarRoomChatDB(
+        incident_id=msg.incident_id,
+        sender=msg.sender,
+        role=msg.role,
+        type=msg.type,
+        text=msg.text,
+        timestamp=datetime.utcnow()
+    )
+    db.add(chat_db)
+    db.commit()
+    db.refresh(chat_db)
+    return {"status": "success", "id": chat_db.id}
+
+@app.get("/warroom/chat/{incident_id}")
+async def get_warroom_chat(incident_id: str, db: Session = Depends(get_db)):
+    """Retrieve chat history for a specific incident"""
+    chats = db.query(WarRoomChatDB).filter(WarRoomChatDB.incident_id == incident_id).order_by(WarRoomChatDB.timestamp.asc()).all()
+    return {"messages": chats}
+
+@app.post("/warroom/resolve/{incident_id}")
+async def resolve_and_learn_incident(incident_id: str, db: Session = Depends(get_db)):
+    """
+    Gather all chat logs for the incident, compile them into a troubleshooting report,
+    and ingest them into ChromaDB for future RAG learning.
+    """
+    try:
+        # Retrieve all messages for this incident
+        chats = db.query(WarRoomChatDB).filter(WarRoomChatDB.incident_id == incident_id).order_by(WarRoomChatDB.timestamp.asc()).all()
+        
+        if not chats:
+            raise HTTPException(status_code=404, detail="No chat history found for this incident.")
+            
+        # Build the Troubleshooting Report text
+        report_lines = [
+            f"[Troubleshooting Report - War-Room Chat History]",
+            f"Incident ID: {incident_id}",
+            f"Resolved At: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"\n--- Incident Log ---"
+        ]
+        
+        for msg in chats:
+            time_str = msg.timestamp.strftime('%H:%M:%S')
+            prefix = f"[{time_str}] {msg.sender} ({msg.role}) [{msg.type}]:"
+            report_lines.append(f"{prefix} {msg.text}")
+            
+        report_lines.append("\n--- Resolution ---")
+        report_lines.append(f"Incident {incident_id} successfully resolved and added to knowledge base.")
+        
+        full_report_text = "\n".join(report_lines)
+        
+        metadata = {
+            "source": "war_room_chat",
+            "type": "incident_report",
+            "category": "human_interaction",
+            "incident_id": incident_id,
+            "ingested_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        # Ingest into ChromaDB
+        vector_store.add_texts(
+            texts=[full_report_text],
+            metadatas=[metadata],
+            ids=[f"warroom_{incident_id}_{int(datetime.now().timestamp())}"]
+        )
+        
+        return {
+            "status": "success", 
+            "message": f"{incident_id} 장애 보고서가 성공적으로 RAG Knowledge Base에 학습되었습니다.",
+            "message_count_processed": len(chats)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error resolving incident {incident_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

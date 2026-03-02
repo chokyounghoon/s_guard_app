@@ -80,6 +80,25 @@ export default function AIChatBubble({ message, onCopy, onShare }) {
         <div className="bg-gradient-to-br from-slate-800/90 to-slate-900/90 border border-purple-500/20 rounded-2xl rounded-tl-none px-4 py-3 text-sm text-slate-200 shadow-xl backdrop-blur-sm">
           {parseMarkdown(message.text)}
 
+          {/* Related Logs / Knowledge Base Context */}
+          {message.logs && message.logs.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-purple-500/20">
+              <div className="bg-[#0b0d12] rounded-xl border border-white/5 p-3 text-[11px] font-mono overflow-auto max-h-48">
+                <div className="flex items-center space-x-1.5 mb-2 text-purple-400 border-b border-white/5 pb-1">
+                  <Sparkles className="w-3 h-3" />
+                  <span className="font-semibold tracking-wide">RAG 검토 지식 (Knowledge Base)</span>
+                </div>
+                <div className="space-y-2">
+                  {message.logs.map((log, logIdx) => (
+                    <div key={logIdx} className="text-slate-300 border-l-2 border-purple-500/30 pl-2 py-0.5 whitespace-pre-wrap leading-relaxed">
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Metrics Display (if present) */}
           {message.metrics && (
             <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-white/10">
