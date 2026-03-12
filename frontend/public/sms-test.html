@@ -121,10 +121,24 @@
             <h3>📱 커스텀 문자 전송</h3>
             
             <label class="input-label">발신자 (번호 또는 이름)</label>
-            <input type="text" id="custom-sender" placeholder="예: 010-1234-5678" value="010-휴대폰-테스트">
+            <input type="text" id="custom-sender" placeholder="예: 010-1234-5678" value="1544-7000">
             
             <label class="input-label">문자 내용 (Message Content)</label>
-            <textarea id="custom-message" placeholder="장애 상황이나 테스트할 문구를 입력하세요..."></textarea>
+            <textarea id="custom-message" placeholder="▶ IF아이디 : [FAN00200]
+                ▶ 서비스코드 : [SCSL02024U]
+                ▶ 서비스명 : [[pLay-상담]마케팅대상여부조회]
+                ▶ 업무시스템 : [FRC]
+
+                ▶ 에러코드 : [EGRT0096]
+                ▶ 발생건수 : [최근 2분동안 총 30건 발생]
+                ▶ 발생노드 : [B1:3건, B2:27건]
+                ▶ 에러메시지 : [송신실패-세션 쓰는 도중 오류가 발생하였습니다]
+
+                ▶ 메시지 수신자 : [윤학민, 이장규, 이재연, 조경훈, 박준현, 김성원, 최경희, 정경성, 변영진, 황광덕]
+
+                ▶ 발생시각 : [2026-03-01 21:35:04]">
+                
+            </textarea>
             
             <button onclick="sendManualSMS()">대시보드로 전송하기</button>
         </div>
