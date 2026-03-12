@@ -5,3 +5,10 @@ python-dotenv==1.0.1
 httpx==0.28.1
 chromadb
 sentence-transformers
+langchain
+langchain_community
+langchain_ollama
+langchain_chroma
+sqlalchemy
+psycopg2-binary
+python-multipart

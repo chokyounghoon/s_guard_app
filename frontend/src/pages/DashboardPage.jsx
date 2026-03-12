@@ -30,6 +30,7 @@ export default function DashboardPage() {
   const [deletedSmsIds, setDeletedSmsIds] = useState(new Set());
   const [isSmsPanelCollapsed, setIsSmsPanelCollapsed] = useState(false);
   const [predictionCounts, setPredictionCounts] = useState({ critical: 0, server: 0, security: 0, report: 0 });
+  const [selectedSms, setSelectedSms] = useState(null);
 
   // Initialize data from localStorage
   useEffect(() => {
@@ -58,7 +59,7 @@ export default function DashboardPage() {
       // Cloudflare Workers API 사용
       const apiUrl = window.location.hostname === 'localhost'
         ? 'http://localhost:8000/sms/recent?limit=3'
-        : 'https://sguard-sms-api.khcho0421.workers.dev/sms/recent?limit=3';
+        : 'https://api.chokerslab.store/sms/recent?limit=3';
 
       const response = await fetch(apiUrl);
       if (response.ok) {
@@ -82,7 +83,7 @@ export default function DashboardPage() {
     try {
       const apiUrl = window.location.hostname === 'localhost'
         ? `http://localhost:8000/sms/${id}`
-        : `https://sguard-sms-api.khcho0421.workers.dev/sms/${id}`;
+        : `https://api.chokerslab.store/sms/${id}`;
 
       const response = await fetch(apiUrl, { method: 'DELETE' });
       if (response.ok) {
@@ -212,7 +213,7 @@ export default function DashboardPage() {
 
       const apiUrl = window.location.hostname === 'localhost'
         ? `http://localhost:8000/ai/agent-discussion/${smsMessage.id}`
-        : `https://sguard-sms-api.khcho0421.workers.dev/ai/agent-discussion/${smsMessage.id}`;
+        : `https://api.chokerslab.store/ai/agent-discussion/${smsMessage.id}`;
 
       const response = await fetch(apiUrl);
       if (!response.ok) throw new Error('Failed to fetch discussion');
@@ -277,7 +278,7 @@ export default function DashboardPage() {
 
         const apiUrl = window.location.hostname === 'localhost'
           ? 'http://localhost:8000/ai/report/save'
-          : 'https://sguard-sms-api.khcho0421.workers.dev/ai/report/save';
+          : 'https://api.chokerslab.store/ai/report/save';
 
         const res = await fetch(apiUrl, {
           method: 'POST',
@@ -526,10 +527,18 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <h3 className="font-bold text-white text-lg">실시간 SMS 수신 내역</h3>
-                  <p className="text-[10px] text-slate-500 font-mono uppercase">REAL-TIME SMS MONITORING</p>
+                  <p className="text-[10px] text-slate-500 font-mono uppercase">REAL-TIME SMS MONITORING · 클릭하여 AI 분석</p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
+                {selectedSms && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setSelectedSms(null); }}
+                    className="text-[10px] bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 px-2 py-1 rounded-full hover:bg-yellow-500/20 transition-colors"
+                  >
+                    분석 취소 ✕
+                  </button>
+                )}
                 <div className="flex items-center space-x-2">
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
@@ -545,41 +554,56 @@ export default function DashboardPage() {
 
             <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isSmsPanelCollapsed ? 'max-h-0' : 'max-h-[1000px] border-t border-white/5'}`}>
               <div className="p-6 space-y-4">
-                {smsMessages.filter(msg => !deletedSmsIds.has(msg.id)).map((msg) => (
-                  <div key={msg.id} className="bg-[#11141d] rounded-2xl p-4 border border-white/5 flex items-start justify-between group hover:border-blue-500/30 transition-all">
-                    <div className="flex items-start space-x-3 flex-1">
-                      <div className="w-10 h-10 rounded-full bg-blue-600/10 flex items-center justify-center shrink-0">
-                        {msg.keyword_detected ? (
-                          <AlertCircle className="w-6 h-6 text-yellow-300" />
-                        ) : (
-                          <Info className="w-6 h-6 text-blue-400" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center space-x-2">
-                            <h4 className="font-bold text-white text-sm">SMS 수신</h4>
-                            {msg.keyword_detected && (
-                              <span className="bg-yellow-400/20 text-yellow-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-yellow-400/30">
-                                키워드 감지
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-slate-500 font-mono">{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                {smsMessages.filter(msg => !deletedSmsIds.has(msg.id)).map((msg) => {
+                  const isSelected = selectedSms?.id === msg.id;
+                  return (
+                    <div
+                      key={msg.id}
+                      onClick={() => setSelectedSms(isSelected ? null : msg)}
+                      className={`rounded-2xl p-4 border flex items-start justify-between group transition-all cursor-pointer
+                        ${isSelected
+                          ? 'bg-yellow-500/5 border-yellow-500/40 ring-1 ring-yellow-500/30 shadow-lg shadow-yellow-500/10'
+                          : 'bg-[#11141d] border-white/5 hover:border-blue-500/30'}`}
+                    >
+                      <div className="flex items-start space-x-3 flex-1">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isSelected ? 'bg-yellow-600/20' : 'bg-blue-600/10'}`}>
+                          {msg.keyword_detected ? (
+                            <AlertCircle className={`w-6 h-6 ${isSelected ? 'text-yellow-300' : 'text-yellow-300'}`} />
+                          ) : (
+                            <Info className={`w-6 h-6 ${isSelected ? 'text-yellow-400' : 'text-blue-400'}`} />
+                          )}
                         </div>
-                        <p className="text-xs text-slate-400 mb-1">발신: {msg.sender}</p>
-                        <p className="text-sm text-slate-200 leading-snug">{msg.message}</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center space-x-2">
+                              <h4 className={`font-bold text-sm ${isSelected ? 'text-yellow-300' : 'text-white'}`}>SMS 수신</h4>
+                              {msg.keyword_detected && (
+                                <span className="bg-yellow-400/20 text-yellow-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-yellow-400/30">
+                                  키워드 감지
+                                </span>
+                              )}
+                              {isSelected && (
+                                <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-yellow-500/30 animate-pulse">
+                                  ⚡ 분석 중
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-slate-500 font-mono">{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                          </div>
+                          <p className="text-xs text-slate-400 mb-1">발신: {msg.sender}</p>
+                          <p className={`text-sm leading-snug ${isSelected ? 'text-yellow-100' : 'text-slate-200'}`}>{msg.message}</p>
+                        </div>
+                        <button
+                          onClick={(e) => deleteSMSMessage(e, msg.id)}
+                          className="ml-2 p-1.5 rounded-full hover:bg-white/10 text-slate-400 hover:text-red-400 transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+                          title="삭제"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       </div>
-                      <button
-                        onClick={(e) => deleteSMSMessage(e, msg.id)}
-                        className="ml-2 p-1.5 rounded-full hover:bg-white/10 text-slate-400 hover:text-red-400 transition-colors shrink-0 opacity-0 group-hover:opacity-100"
-                        title="삭제"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -588,7 +612,7 @@ export default function DashboardPage() {
         {/* AI Autopilot Insight Panel */}
         <React.Suspense fallback={<div className="h-48 bg-gray-900 rounded-3xl animate-pulse"></div>}>
           <ErrorBoundary>
-            <AiInsightPanel onLogReceived={handleLogReceived} onShowDetail={handleShowInsight} />
+            <AiInsightPanel onLogReceived={handleLogReceived} onShowDetail={handleShowInsight} selectedSms={selectedSms} onOpenWarRoom={startLiveScenario} />
           </ErrorBoundary>
         </React.Suspense>
 
@@ -634,15 +658,20 @@ export default function DashboardPage() {
                 const isRecent = (new Date() - new Date(msg.timestamp)) < 15 * 60 * 1000;
 
                 return (
-                  <div key={msg.id} onClick={() => startLiveScenario(msg)} className="cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99] relative">
+                  <div
+                    key={msg.id}
+                    onClick={() => { setSelectedSms(selectedSms?.id === msg.id ? null : msg); startLiveScenario(msg); }}
+                    className="cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99] relative"
+                  >
                     {/* 반짝이는 표시기 */}
-                    {isRecent && <div className="absolute top-2 right-2 w-2 h-2 bg-blue-500 rounded-full animate-ping z-10" />}
+                    {isRecent && <div className={`absolute top-2 right-2 w-2 h-2 rounded-full animate-ping z-10 ${selectedSms?.id === msg.id ? 'bg-yellow-400' : 'bg-blue-500'}`} />}
 
                     <AlertItem
                       title={title}
                       time={new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       severity={severity}
                       desc={msg.message}
+                      isSelected={selectedSms?.id === msg.id}
                     />
                   </div>
                 );

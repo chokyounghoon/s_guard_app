@@ -26,7 +26,7 @@ services:
     container_name: sguard-tomcat
     restart: always
     ports:
-      - "8080:8080"
+      - "8081:8080"
     volumes:
       - ./backend/tomcat_webapps:/usr/local/tomcat/webapps
     environment:
@@ -50,11 +50,11 @@ services:
     environment:
       DATABASE_URL: postgresql://sguard_user:sguard_password@db:5432/sguard_db
       OLLAMA_BASE_URL: http://ollama:11434
-      CHROMA_BASE_URL: http://chromadb:8000
+      CHROMA_BASE_URL: http://chroma:8000
     depends_on:
       - db
       - ollama
-      - chromadb
+      - chroma
     volumes:
       - ./backend:/app
 

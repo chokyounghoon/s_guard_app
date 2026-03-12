@@ -805,6 +805,46 @@ async def resolve_and_learn_incident(incident_id: str, db: Session = Depends(get
         logger.error(f"Error resolving incident {incident_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/knowledge/list")
+async def list_knowledge_entries(limit: int = 50):
+    """
+    Return documents from the s_guard_knowledge ChromaDB collection
+    so users can review what has been learned by the AI.
+    """
+    try:
+        # Get the raw ChromaDB client collection
+        raw_collection = chroma_client.get_or_create_collection(
+            name="s_guard_knowledge",
+            metadata={"hnsw:space": "cosine"}
+        )
+        result = raw_collection.get(
+            limit=limit,
+            include=["documents", "metadatas"]
+        )
+        entries = []
+        ids = result.get("ids", [])
+        docs = result.get("documents", [])
+        metas = result.get("metadatas", [])
+        for i, doc_id in enumerate(ids):
+            meta = metas[i] if i < len(metas) else {}
+            doc = docs[i] if i < len(docs) else ""
+            entries.append({
+                "id": doc_id,
+                "source": meta.get("source", "unknown"),
+                "type": meta.get("type", "document"),
+                "incident_id": meta.get("incident_id", ""),
+                "title": meta.get("title", doc[:80] + "..." if len(doc) > 80 else doc),
+                "ingested_at": meta.get("ingested_at", meta.get("timestamp", "")),
+                "preview": doc[:300] + "..." if len(doc) > 300 else doc,
+            })
+        # Sort by ingested_at descending
+        entries.sort(key=lambda x: x.get("ingested_at", ""), reverse=True)
+        return {"total": len(entries), "entries": entries}
+    except Exception as e:
+        logger.error(f"Failed to list knowledge entries: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

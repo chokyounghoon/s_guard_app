@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Phone, Menu, Plus, Send, Home, MessageSquare, BarChart2, Settings, Info, AlertTriangle, ChevronDown, ChevronUp, Users, LogOut, FileText, UserPlus, Bot, Sparkles, Zap, X } from 'lucide-react';
+import { ArrowLeft, Phone, Menu, Plus, Send, Home, MessageSquare, BarChart2, Settings, Info, AlertTriangle, ChevronDown, ChevronUp, Users, LogOut, FileText, UserPlus, Bot, Sparkles, Zap, X, Database } from 'lucide-react';
 import AIChatBubble from '../components/AIChatBubble';
 import AIThinkingIndicator from '../components/AIThinkingIndicator';
 import ServerStatusChart from '../components/chat/ServerStatusChart';
@@ -192,22 +192,23 @@ export default function ChatPage() {
     setMainInput('');
   };
 
+  const [resolveSuccess, setResolveSuccess] = useState(false);
+
   const handleResolveIncident = async () => {
     if (!confirm('이 장애 상황을 해결(Resolve) 처리하고 해당 대화 내용을 AI RAG Knowledge Base에 학습시키겠습니까?')) return;
     
     try {
-      const res = await fetch(`http://localhost:8000/warroom/resolve/${incidentId}`, {
-        method: 'POST'
-      });
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://api.chokerslab.store';
+      const res = await fetch(`${apiBase}/warroom/resolve/${incidentId}`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        alert(`성공: ${data.message} (${data.message_count_processed}개의 메시지 학습됨)`);
+        setResolveSuccess(true);
         saveChatToDb({
           incident_id: incidentId,
           sender: '시스템',
           role: 'System',
           type: 'system',
-          text: `장애 처리가 완료되어 전체 대화 내용이 RAG AI Knowledge Base에 성공적으로 학습되었습니다!`
+          text: `✅ 장애 처리 완료! ${data.message_count_processed}개의 대화가 RAG AI Knowledge Base에 성공적으로 학습되었습니다.`
         });
       } else {
         alert('학습 중 오류가 발생했습니다.');
@@ -238,15 +239,22 @@ export default function ChatPage() {
         </div>
         <div className="flex items-center space-x-4 relative">
           <button 
-            onClick={() => { setShowPhoneList(!showPhoneList); setShowMenu(false); }}
-            className={`p-1.5 rounded-full transition-colors ${showPhoneList ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-white/10 text-slate-300'}`}
+            onClick={handleResolveIncident}
+            className="flex items-center px-3 py-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-xs font-bold hover:bg-emerald-500/30 transition-colors animate-pulse"
           >
-            <Phone className="w-5 h-5" />
+            Resolve
           </button>
-          
+          <button className="p-2 rounded-full hover:bg-white/10 transition-colors relative" onClick={() => setShowPhoneList(!showPhoneList)}>
+            <Phone className="w-5 h-5 text-white" />
+            <span className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full border border-[#0f1421]"></span>
+          </button>
+          <button className="p-2 rounded-full hover:bg-white/10 transition-colors" onClick={() => setShowMenu(!showMenu)}>
+            <Menu className="w-5 h-5 text-white" />
+          </button>
+
           {/* Phone List Dropdown */}
           {showPhoneList && (
-            <div className="absolute top-12 right-0 w-64 bg-[#1a1f2e] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50">
+            <div className="absolute top-12 right-12 w-64 bg-[#1a1f2e] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50">
                 <div className="p-3 border-b border-white/5 bg-[#11141d]">
                     <span className="text-xs font-bold text-slate-300">통화 대상 선택</span>
                 </div>
@@ -269,13 +277,6 @@ export default function ChatPage() {
             </div>
           )}
 
-          <button 
-            onClick={() => { setShowMenu(!showMenu); setShowPhoneList(false); }}
-            className={`p-1.5 rounded-full transition-colors ${showMenu ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-white/10 text-slate-300'}`}
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-
           {/* Menu Dropdown */}
           {showMenu && (
             <div className="absolute top-12 right-0 w-48 bg-[#1a1f2e] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50">
@@ -286,17 +287,37 @@ export default function ChatPage() {
                     <UserPlus className="w-4 h-4 text-blue-400" />
                     <span className="text-sm text-slate-200">초대하기</span>
                 </div>
-                <div 
-                    onClick={() => { if(confirm('대화방을 나가시겠습니까?')) navigate('/dashboard'); }}
-                    className="flex items-center space-x-3 p-3 hover:bg-red-500/10 cursor-pointer transition-colors"
-                >
-                    <LogOut className="w-4 h-4 text-red-400" />
-                    <span className="text-sm text-red-400">나가기</span>
-                </div>
+              <div 
+                onClick={() => { if(confirm('대화방을 나가시겠습니까?')) navigate('/dashboard'); }}
+                className="flex items-center space-x-3 p-3 hover:bg-red-500/10 cursor-pointer transition-colors"
+              >
+                <LogOut className="w-4 h-4 text-red-400" />
+                <span className="text-sm text-red-400">나가기</span>
+              </div>
             </div>
           )}
         </div>
       </header>
+
+      {/* 성공 토스트 알림바 */}
+      {resolveSuccess && (
+        <div className="bg-gradient-to-r from-emerald-600/20 to-blue-600/20 border-b border-emerald-500/30 p-3 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <div className="bg-emerald-500/20 p-1.5 rounded-full">
+              <Sparkles className="w-4 h-4 text-emerald-400" />
+            </div>
+            <p className="text-sm text-emerald-100 font-medium">장애가 해결되었으며, 대화 내역이 AI RAG 모델에 학습되었습니다.</p>
+          </div>
+          <button
+            onClick={() => navigate('/knowledge-base')}
+            className="shrink-0 flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+          >
+            <Database className="w-4 h-4" />
+            학습된 내역 확인하기
+          </button>
+        </div>
+      )}
+
 
       {/* Persistent Error Log Banner (Collapsible) */}
       <div className="bg-red-950/10 border-b border-red-500/10 backdrop-blur-sm z-30 sticky top-[73px]">
@@ -529,7 +550,7 @@ export default function ChatPage() {
              className="absolute right-1 top-1 p-1.5 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-900/40 disabled:opacity-50 disabled:cursor-not-allowed"
            >
               <Send className="w-5 h-5 fill-current" />
-           </button>
+          </button>
         </div>
       </div>
 
