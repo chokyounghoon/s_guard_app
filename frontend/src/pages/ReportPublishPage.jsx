@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Check, CheckCircle2, FileText, Mail, Home, MessageSquare, Activity, Search, MoreHorizontal } from 'lucide-react';
+import { X, Check, CheckCircle2, FileText, Mail } from 'lucide-react';
+import BottomMenu from '../components/BottomMenu';
 
 export default function ReportPublishPage() {
   const navigate = useNavigate();
@@ -124,28 +125,7 @@ export default function ReportPublishPage() {
       </main>
 
       {/* Navigation */}
-      <nav className="fixed bottom-0 left-0 w-full bg-[#0f1421] border-t border-white/5 px-6 py-3 flex justify-between items-center z-50 pb-safe">
-        <div className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer" onClick={() => navigate('/dashboard')}>
-            <Home className="w-6 h-6" />
-            <span className="text-[10px] font-medium">홈</span>
-        </div>
-        <div className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer" onClick={() => navigate('/chat')}>
-            <MessageSquare className="w-6 h-6" />
-            <span className="text-[10px] font-medium">War-Room</span>
-        </div>
-        <div className="flex flex-col items-center space-y-1 text-blue-500 transition-colors cursor-pointer">
-            <Activity className="w-6 h-6 fill-current" />
-            <span className="text-[10px] font-medium">활동</span>
-        </div>
-        <div className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer">
-            <Search className="w-6 h-6" />
-            <span className="text-[10px] font-medium">검색</span>
-        </div>
-        <div className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer">
-            <MoreHorizontal className="w-6 h-6" />
-            <span className="text-[10px] font-medium">더보기</span>
-        </div>
-      </nav>
+      <BottomMenu currentPath="/activity" />
     </div>
   );
 }

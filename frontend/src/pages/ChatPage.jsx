@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Phone, Menu, Plus, Send, Home, MessageSquare, BarChart2, Settings, Info, AlertTriangle, ChevronDown, ChevronUp, Users, LogOut, FileText, UserPlus, Bot, Sparkles, Zap, X, Database } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Phone, Menu, Plus, Send, Home, MessageSquare, BarChart2, Settings, Info, AlertTriangle, ChevronDown, ChevronUp, Users, LogOut, FileText, UserPlus, Bot, Sparkles, Zap, X, Database, Paperclip, Image as ImgIcon } from 'lucide-react';
 import AIChatBubble from '../components/AIChatBubble';
 import AIThinkingIndicator from '../components/AIThinkingIndicator';
 import ServerStatusChart from '../components/chat/ServerStatusChart';
@@ -14,6 +14,14 @@ export default function ChatPage() {
   const [aiMessages, setAiMessages] = useState([]);
   const [userInput, setUserInput] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
+  const [showFullAnalysis, setShowFullAnalysis] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [roomTitle, setRoomTitle] = useState('');
+  const [roomDescription, setRoomDescription] = useState('');
+  const [roomStatus, setRoomStatus] = useState('Open');
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]); // Array of { name, url, type, file }
+  const fileInputRef = useRef(null);
 
   const participants = [
     { name: '정도현 팀장', role: 'Team Leader', phone: '010-1234-5678' },
@@ -27,41 +35,62 @@ export default function ChatPage() {
   // Main Chat State
   const [mainMessages, setMainMessages] = useState([]);
   const [mainInput, setMainInput] = useState('');
-  const incidentId = 'INC-8823'; // Hardcoded for demo
-  const currentUser = { name: '이수민 매니저', role: 'Manager' }; // Hardcoded current user
+  const { incidentId: paramId } = useParams();
+  const incidentId = paramId || 'INC-8823';
+  
+  const [currentUser, setCurrentUser] = useState({ name: '이수민 매니저', role: 'Manager' });
+  const [aiAnalysisMessage, setAiAnalysisMessage] = useState(null);
 
-  // Load chat history on mount
-  React.useEffect(() => {
+  useEffect(() => {
+    const userStr = localStorage.getItem('sguard_user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        if (user.name) {
+          setCurrentUser({
+            name: user.name,
+            role: user.role || 'Manager'
+          });
+        }
+      } catch(e) {}
+    }
+  }, []);
+
+  const getApiUrl = (endpoint) => {
+    const apiBase = window.location.hostname === 'localhost' 
+      ? 'http://localhost:8000' 
+      : 'https://api.chokerslab.store';
+    return `${apiBase}${endpoint}`;
+  };
+
+  // Load chat history on mount or when incidentId changes
+  useEffect(() => {
     const fetchChatHistory = async () => {
       try {
-        const res = await fetch(`http://localhost:8000/warroom/chat/${incidentId}`);
-        if (res.ok) {
-          const data = await res.json();
-          const loadedMessages = data.messages.map(msg => ({
+        const res = await fetch(getApiUrl(`/warroom/chat/${incidentId}`));
+          if (res.ok) {
+            const data = await res.json();
+            setRoomTitle(data.title || incidentId);
+            setRoomDescription(data.description || '');
+            setRoomStatus(data.status || 'Open');
+            const loadedMessages = data.messages.map(msg => ({
             id: msg.id,
             type: msg.type === 'me' || msg.sender === currentUser.name ? 'me' : 
-                 (msg.type === 'system' ? 'system' : 'other'),
+                 (msg.type === 'system' ? 'system' : 
+                 (msg.type === 'ai_analysis' ? 'ai_analysis' : 'other')),
             sender: msg.sender,
             role: msg.role,
-            initials: msg.sender ? msg.sender.substring(0, 2) : 'SY',
-            color: 'bg-slate-700', // Simplify colors for now
+            initials: msg.sender ? msg.sender : 'SY',
+            color: msg.type === 'ai_analysis' ? 'bg-purple-600' : 'bg-slate-700',
             text: msg.text,
             time: new Date(msg.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-            icon: msg.type === 'system' ? Info : null
+            icon: msg.type === 'system' ? Info : (msg.type === 'ai_analysis' ? Sparkles : null)
           }));
+          setMainMessages(loadedMessages);
           
-          if (loadedMessages.length === 0) {
-            // Seed initial greeting if empty
-            saveChatToDb({
-              incident_id: incidentId,
-              sender: '시스템',
-              role: 'System',
-              type: 'system',
-              text: 'War-Room 채팅방이 생성되었습니다. 모든 대화 내용은 장애 해결 시 AI 학습에 사용됩니다.'
-            });
-          } else {
-            setMainMessages(loadedMessages);
-          }
+          // AI 분석 메시지 추출하여 상태 저장
+          const analysis = loadedMessages.find(m => m.type === 'ai_analysis');
+          if (analysis) setAiAnalysisMessage(analysis);
         }
       } catch (err) {
         console.error("Failed to load chat history", err);
@@ -72,7 +101,7 @@ export default function ChatPage() {
 
   const saveChatToDb = async (messageData) => {
     try {
-      const res = await fetch('http://localhost:8000/warroom/chat', {
+      const res = await fetch(getApiUrl('/warroom/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(messageData)
@@ -84,12 +113,13 @@ export default function ChatPage() {
           type: messageData.type === 'me' ? 'me' : (messageData.type === 'system' ? 'system' : 'other'),
           sender: messageData.sender,
           role: messageData.role,
-          initials: messageData.sender.substring(0, 2),
+          initials: messageData.sender,
           color: messageData.type === 'system' ? 'bg-indigo-600' : 'bg-slate-700',
           text: messageData.text,
           time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
         };
         setMainMessages(prev => [...prev, newMessage]);
+        if (newMessage.type === 'ai_analysis') setAiAnalysisMessage(newMessage);
       }
     } catch (err) {
       console.error("Failed to save chat", err);
@@ -124,7 +154,7 @@ export default function ChatPage() {
     setIsAiThinking(true);
 
     try {
-      const apiResponse = await fetch('http://localhost:8000/ai/chat', {
+      const apiResponse = await fetch(getApiUrl('/ai/chat'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -180,16 +210,121 @@ export default function ChatPage() {
     setShowAIAssistant(false);
   };
 
-  const handleMainSendMessage = () => {
-    if (!mainInput.trim()) return;
-    saveChatToDb({
-      incident_id: incidentId,
-      sender: currentUser.name,
-      role: currentUser.role,
-      type: 'me',
-      text: mainInput
-    });
-    setMainInput('');
+  const renderMessageContent = (text, isMe = false) => {
+    if (typeof text === 'string' && text.includes('[첨부파일]')) {
+      // Find the start of the tag if there's other text (though backend currently sends it alone)
+      const tagIndex = text.indexOf('[첨부파일]');
+      const tagContent = text.substring(tagIndex + 6).trim();
+      const parts = tagContent.split('|');
+      
+      if (parts.length >= 3) {
+        const [filename, url, type] = parts;
+        const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://api.chokerslab.store';
+        const fullUrl = url.startsWith('http') ? url : `${apiBase}${url}`;
+        
+        if (type.startsWith('image/')) {
+          return (
+            <div className="flex flex-col space-y-2 py-1">
+              <div className={`text-[10px] flex items-center gap-1 mb-0.5 ${isMe ? 'text-blue-100/80' : 'text-slate-400/80'}`}>
+                <ImgIcon className="w-3 h-3" />
+                이미지 첨부됨
+              </div>
+              <img 
+                src={fullUrl} 
+                alt={filename} 
+                className="max-w-full rounded-lg border border-white/10 hover:opacity-90 cursor-pointer transition-opacity shadow-sm" 
+                onClick={() => window.open(fullUrl, '_blank')}
+              />
+              <span className={`text-[10px] truncate pt-1 ${isMe ? 'text-blue-200' : 'text-slate-500'}`}>{filename}</span>
+            </div>
+          );
+        } else {
+          return (
+            <div 
+              className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all group ${
+                isMe ? 'bg-white/10 border-white/10 hover:bg-white/20' : 'bg-black/20 border-white/5 hover:bg-black/30'
+              }`}
+              onClick={() => window.open(fullUrl, '_blank')}
+            >
+              <div className={`p-2.5 rounded-xl transition-colors ${isMe ? 'bg-white/20 group-hover:bg-white/30' : 'bg-blue-600/20 group-hover:bg-blue-600/30'}`}>
+                <FileText className={`w-5 h-5 ${isMe ? 'text-white' : 'text-blue-400'}`} />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className={`text-xs font-bold truncate pr-2 ${isMe ? 'text-white' : 'text-slate-200'}`}>{filename}</span>
+                <span className={`text-[9px] uppercase font-mono tracking-wider mt-0.5 ${isMe ? 'text-blue-200' : 'text-slate-500'}`}>{type.split('/')[1] || 'FILE'} 형식</span>
+              </div>
+            </div>
+          );
+        }
+      }
+    }
+    return text;
+  };
+
+  const handleSendMessage = async () => {
+    const hasText = mainInput.trim();
+    const hasFiles = selectedFiles.length > 0;
+    
+    if (!hasText && !hasFiles) return;
+    if (uploadingFile) return;
+
+    setUploadingFile(true);
+    const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://api.chokerslab.store';
+    
+    try {
+      // 1. Upload files first if any
+      if (hasFiles) {
+        const userStr = localStorage.getItem('sguard_user');
+        const user = userStr ? JSON.parse(userStr) : { name: '익명' };
+        
+        for (const fileObj of selectedFiles) {
+          const formData = new FormData();
+          formData.append('file', fileObj.file);
+          formData.append('incident_id', incidentId);
+          formData.append('uploaded_by', user.name || '익명');
+          await fetch(`${apiBase}/warroom/upload`, { method: 'POST', body: formData });
+        }
+        setSelectedFiles([]);
+      }
+
+      // 2. Send text message if any
+      if (hasText) {
+        await saveChatToDb({
+          incident_id: incidentId,
+          sender: currentUser.name,
+          role: currentUser.role,
+          type: 'me',
+          text: mainInput
+        });
+        setMainInput('');
+      }
+
+      // 3. Re-fetch chat history once to ensure everything is in order
+      const res = await fetch(`${apiBase}/warroom/chat/${incidentId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const loadedMessages = data.messages.map(msg => ({
+          id: msg.id,
+          type: msg.type === 'me' || msg.sender === currentUser.name ? 'me' : 
+              (msg.type === 'system' ? 'system' : 
+              (msg.type === 'ai_analysis' ? 'ai_analysis' : 'other')),
+          sender: msg.sender,
+          role: msg.role,
+          initials: msg.sender ? msg.sender.substring(0, 2) : 'SY',
+          color: msg.type === 'ai_analysis' ? 'bg-purple-600' : 'bg-slate-700',
+          text: msg.text,
+          time: new Date(msg.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+          icon: msg.type === 'system' ? Info : (msg.type === 'ai_analysis' ? Sparkles : null)
+        }));
+        setMainMessages(loadedMessages);
+        const analysis = loadedMessages.find(m => m.type === 'ai_analysis');
+        if (analysis) setAiAnalysisMessage(analysis);
+      }
+    } catch (err) {
+      console.error("Failed to send message/files", err);
+    } finally {
+      setUploadingFile(false);
+    }
   };
 
   const [resolveSuccess, setResolveSuccess] = useState(false);
@@ -229,12 +364,15 @@ export default function ChatPage() {
           </button>
           <div className="flex flex-col">
             <div className="flex items-center space-x-2">
-              <span className="font-bold text-lg">INC-8823</span>
+              <span className="font-bold text-lg">{roomTitle || incidentId}</span>
               <span className="bg-red-500/20 text-red-500 text-[10px] font-bold px-2 py-0.5 rounded border border-red-500/30 uppercase tracking-tighter">
                 CRITICAL
               </span>
             </div>
-            <span className="text-slate-400 text-xs">장애 협업 채팅방 ({participants.length}명)</span>
+            {roomDescription && (
+              <span className="text-slate-400 text-[11px] truncate max-w-[200px]">{roomDescription}</span>
+            )}
+            <span className="text-slate-500 text-[10px]">장애 협업 채팅방 ({participants.length}명)</span>
           </div>
         </div>
         <div className="flex items-center space-x-4 relative">
@@ -319,32 +457,64 @@ export default function ChatPage() {
       )}
 
 
-      {/* Persistent Error Log Banner (Collapsible) */}
-      <div className="bg-red-950/10 border-b border-red-500/10 backdrop-blur-sm z-30 sticky top-[73px]">
+      {/* Persistent AI Analysis / Error Log Banner (Collapsible) */}
+      <div className="bg-slate-900/80 border-b border-white/5 backdrop-blur-md z-30 sticky top-[73px]">
         <div className="px-4 py-2">
             <div 
                 onClick={() => setIsLogExpanded(!isLogExpanded)}
                 className="flex items-center justify-between cursor-pointer group"
             >
                 <div className="flex items-center space-x-2">
-                    <AlertTriangle className="w-4 h-4 text-red-500 animate-pulse" />
-                    <span className="text-xs font-bold text-red-400">🚨 현재 발생 중인 장애 (Ongoing Issue)</span>
+                    {aiAnalysisMessage ? (
+                      <>
+                        <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
+                        <span className="text-xs font-bold text-purple-300">✨ AI Autopilot 분석 리포트 고정</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="w-4 h-4 text-red-500 animate-pulse" />
+                        <span className="text-xs font-bold text-red-400">🚨 현재 발생 중인 장애 (Ongoing Issue)</span>
+                      </>
+                    )}
                 </div>
-                <button className="p-1 rounded-full group-hover:bg-red-500/10 transition-colors">
-                    {isLogExpanded ? <ChevronUp className="w-4 h-4 text-red-400" /> : <ChevronDown className="w-4 h-4 text-red-400" />}
+                <button className="p-1 rounded-full group-hover:bg-white/10 transition-colors">
+                    {isLogExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                 </button>
             </div>
             
             {isLogExpanded && (
-                <div className="bg-[#0d0f14] rounded-lg border border-red-500/20 overflow-hidden mt-2 mb-1 animate-in slide-in-from-top-2 duration-200">
-                    <div className="bg-red-900/10 px-3 py-1.5 border-b border-red-500/10 flex justify-between items-center">
-                    <span className="text-[10px] text-red-300 font-mono">system_err.log</span>
-                    <span className="text-[10px] text-red-400/70">Live Stream</span>
+                <div className={`rounded-lg border overflow-hidden mt-2 mb-1 animate-in slide-in-from-top-2 duration-200 ${aiAnalysisMessage ? 'bg-purple-900/10 border-purple-500/30 shadow-lg shadow-purple-900/20' : 'bg-red-900/10 border-red-500/20'}`}>
+                    <div className={`${aiAnalysisMessage ? 'bg-purple-500/10 border-purple-500/10' : 'bg-red-900/10 border-red-500/10'} px-3 py-1.5 border-b flex justify-between items-center`}>
+                      <span className={`text-[10px] font-mono ${aiAnalysisMessage ? 'text-purple-300' : 'text-red-300'}`}>
+                        {aiAnalysisMessage ? 'AI ANALYSIS SUMMARY' : 'INCIDENT DESCRIPTION'}
+                      </span>
+                      <span className={`text-[10px] opacity-70 ${aiAnalysisMessage ? 'text-purple-400' : 'text-red-400'}`}>Live Update</span>
                     </div>
-                    <div className="p-3 text-[11px] font-mono leading-relaxed">
-                    <p className="text-red-400"><span className="font-bold">Error:</span> Connection timed out at port 8080.</p>
-                    <p className="text-yellow-200/80 mt-1"><span className="font-bold text-yellow-500">Caused by:</span> java.net.ConnectException: Connection refused</p>
+                    <div className="p-3 text-[12px] leading-relaxed">
+                      {aiAnalysisMessage ? (
+                        <div className={`text-slate-200 whitespace-pre-wrap transition-all duration-300 ${!showFullAnalysis ? 'line-clamp-3' : ''}`}>
+                          {aiAnalysisMessage.text}
+                        </div>
+                      ) : (
+                        <div className="text-slate-300 italic">
+                          {roomDescription || '장애 세부 정보를 불러오는 중입니다...'}
+                        </div>
+                      )}
                     </div>
+                    {aiAnalysisMessage && (
+                      <div className="px-3 pb-2 flex justify-end">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setShowFullAnalysis(!showFullAnalysis); }}
+                          className="text-[10px] text-purple-400 font-bold uppercase tracking-wider hover:text-purple-300 flex items-center gap-1"
+                        >
+                          {showFullAnalysis ? (
+                            <>Collapse <ChevronUp className="w-3 h-3" /></>
+                          ) : (
+                            <>Show Full Analysis <ChevronDown className="w-3 h-3" /></>
+                          )}
+                        </button>
+                      </div>
+                    )}
                 </div>
             )}
         </div>
@@ -359,18 +529,18 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {mainMessages.map((msg) => (
+        {mainMessages.filter(msg => msg.type !== 'ai_analysis').map((msg) => (
           <div key={msg.id}>
             {msg.type === 'other' && (
               <div className="flex items-start space-x-3 mb-4">
-                <div className={`w-10 h-10 rounded-xl ${msg.color} flex items-center justify-center font-bold text-sm shrink-0`}>
+                <div className={`px-2 py-1 h-10 min-w-[40px] rounded-xl ${msg.color} flex items-center justify-center font-bold text-xs shrink-0 whitespace-nowrap`}>
                   {msg.initials}
                 </div>
                 <div className="flex flex-col space-y-1">
                   <span className="text-xs text-slate-400 font-medium">{msg.sender}</span>
                   <div className="flex items-end space-x-2">
                     <div className="bg-slate-800/80 rounded-2xl rounded-tl-none px-4 py-2.5 max-w-[280px] text-[15px] leading-relaxed whitespace-pre-wrap">
-                      {msg.text}
+                      {renderMessageContent(msg.text, false)}
                     </div>
                     <span className="text-[10px] text-slate-500 pb-1">{msg.time}</span>
                   </div>
@@ -383,7 +553,7 @@ export default function ChatPage() {
                 <div className="flex items-end space-x-2">
                   <span className="text-[10px] text-slate-500 pb-1">{msg.time}</span>
                   <div className="bg-blue-600 rounded-2xl rounded-tr-none px-4 py-3 max-w-[280px] text-[15px] leading-relaxed shadow-lg shadow-blue-900/20 whitespace-pre-wrap">
-                    {msg.text}
+                    {renderMessageContent(msg.text, true)}
                   </div>
                 </div>
               </div>
@@ -396,6 +566,25 @@ export default function ChatPage() {
                      <msg.icon className="w-4 h-4 text-blue-400" />
                   </div>
                   <p className="text-[13px] text-slate-300" dangerouslySetInnerHTML={{ __html: msg.text }} />
+                </div>
+              </div>
+            )}
+
+            {msg.type === 'ai_analysis' && (
+              <div className="flex flex-col items-start space-y-2 mb-8 mt-4">
+                <div className="flex items-center space-x-2 text-purple-400 ml-1">
+                  <div className="bg-purple-500/20 p-1 rounded-lg">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-bold uppercase tracking-widest">AI분석 리포트</span>
+                </div>
+                <div className="bg-gradient-to-br from-purple-900/30 to-blue-900/30 border border-purple-500/20 rounded-3xl px-6 py-5 w-full text-[14px] leading-relaxed whitespace-pre-wrap shadow-xl shadow-purple-900/10 backdrop-blur-sm relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <Bot className="w-12 h-12" />
+                  </div>
+                  <div className="relative z-10 text-slate-200">
+                    {msg.text}
+                  </div>
                 </div>
               </div>
             )}
@@ -519,40 +708,104 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* New Analysis Action Bar */}
       <div className="px-4 pb-2 bg-[#0f1421]">
         <button 
             onClick={handleResolveIncident}
-            className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-900/30 flex items-center justify-center space-x-2 transition-all active:scale-[0.98]"
+            disabled={roomStatus === 'Completed'}
+            className={`w-full font-bold py-3.5 rounded-xl shadow-lg flex items-center justify-center space-x-2 transition-all ${
+              roomStatus === 'Completed'
+                ? 'bg-slate-700 text-slate-500 cursor-not-allowed shadow-none'
+                : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-900/30 active:scale-[0.98]'
+            }`}
         >
-            <Settings className="w-5 h-5 animate-spin-slow" />
-            <span>장애 해결(Resolve) 및 AI에 학습시키기</span>
+            <Settings className={`w-5 h-5 ${roomStatus !== 'Completed' ? 'animate-spin-slow' : ''}`} />
+            <span>{roomStatus === 'Completed' ? '이미 해결된 장애입니다' : '장애 해결(Resolve) 및 AI에 학습시키기'}</span>
         </button>
       </div>
 
       {/* Input Area */}
-      <div className="p-3 bg-[#0f1421] border-t border-white/5 flex items-center space-x-3 mb-[70px]">
-        <button className="p-2.5 rounded-full bg-slate-800/60 hover:bg-slate-700 transition-colors">
-          <Plus className="w-6 h-6 text-slate-400" />
-        </button>
-        <div className="flex-1 relative">
-           <input 
-             type="text" 
-             value={mainInput}
-             onChange={(e) => setMainInput(e.target.value)}
-             onKeyPress={(e) => e.key === 'Enter' && handleMainSendMessage()}
-             placeholder="메시지를 입력하세요..." 
-             className="w-full bg-slate-800/60 rounded-full py-2.5 px-5 text-[15px] border border-white/5 focus:outline-none focus:border-blue-500/50 transition-all placeholder:text-slate-500"
-           />
-           <button 
-             onClick={handleMainSendMessage}
-             disabled={!mainInput.trim()}
-             className="absolute right-1 top-1 p-1.5 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-900/40 disabled:opacity-50 disabled:cursor-not-allowed"
-           >
-              <Send className="w-5 h-5 fill-current" />
+      <div className="p-3 bg-[#0f1421] border-t border-white/5 flex flex-col mb-[70px] space-y-2">
+        {roomStatus === 'Completed' ? (
+          <div className="bg-slate-900/50 rounded-2xl py-4 px-5 border border-white/5 flex items-center justify-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <div className="w-2 h-2 rounded-full bg-slate-500 animate-pulse" />
+            <span className="text-sm text-slate-500 font-medium">이 War-Room은 종료되었습니다. (읽기 전용)</span>
+          </div>
+        ) : (
+          <>
+           {/* File preview */}
+           {selectedFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {selectedFiles.map((file, idx) => (
+                <div key={idx} className="flex items-center gap-2 bg-slate-800/80 rounded-xl px-2 py-1.5 border border-white/10 group animate-in zoom-in-95 duration-200">
+                  {file.type.startsWith('image/') ? (
+                    <img src={file.localUrl} alt={file.name} className="w-8 h-8 rounded-lg object-cover" />
+                  ) : (
+                    <FileText className="w-6 h-6 text-blue-400" />
+                  )}
+                  <span className="text-[10px] text-slate-300 max-w-[80px] truncate">{file.name}</span>
+                  <button 
+                    onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))} 
+                    className="text-slate-500 hover:text-white p-0.5"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+           )}
+        <div className="flex items-center space-x-3">
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files);
+              if (files.length === 0) return;
+              const newFiles = files.map(file => ({
+                name: file.name,
+                type: file.type,
+                localUrl: URL.createObjectURL(file),
+                file: file
+              }));
+              setSelectedFiles(prev => [...prev, ...newFiles]);
+              e.target.value = '';
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2.5 rounded-full bg-slate-800/60 hover:bg-slate-700 transition-colors"
+            title="파일/이미지 첨부"
+          >
+            <Paperclip className="w-5 h-5 text-slate-400" />
           </button>
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={mainInput}
+              onChange={(e) => setMainInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              placeholder="메시지를 입력하세요..."
+              className="w-full bg-slate-800/60 rounded-full py-2.5 px-5 text-[15px] border border-white/5 focus:outline-none focus:border-blue-500/50 transition-all placeholder:text-slate-500"
+            />
+            <button
+              onClick={handleSendMessage}
+              disabled={(!mainInput.trim() && selectedFiles.length === 0) || uploadingFile}
+              className="absolute right-1 top-1 p-1.5 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-900/40 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {uploadingFile ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Send className="w-5 h-5 fill-current" />
+              )}
+            </button>
+          </div>
         </div>
-      </div>
+      </>
+    )}
+  </div>
 
       {/* Navigation */}
       <nav className="fixed bottom-0 left-0 w-full bg-[#0f1421] border-t border-white/5 px-6 py-3 flex justify-between items-center z-50 pb-safe">
@@ -568,7 +821,7 @@ export default function ChatPage() {
             <span className="text-[10px] font-medium">War-Room</span>
         </div>
 
-        <div className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer">
+        <div className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer" onClick={() => navigate('/overall-status')}>
             <BarChart2 className="w-6 h-6" />
             <span className="text-[10px] font-medium">통계</span>
         </div>
@@ -589,11 +842,114 @@ export default function ChatPage() {
             <span className="text-[10px] font-medium">AI</span>
         </div>
         
-        <div className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer">
+        <div className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer" onClick={() => setShowMoreMenu(true)}>
             <Settings className="w-6 h-6" />
             <span className="text-[10px] font-medium">설정</span>
         </div>
       </nav>
+
+      {/* More Menu Popup (Settings) */}
+      {showMoreMenu && (
+        <div className="fixed inset-0 z-[110] flex items-end justify-center animate-in fade-in duration-300">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setShowMoreMenu(false)} />
+          <div className="w-full bg-[#1a1f2e] rounded-t-[40px] border-t border-white/10 shadow-2xl relative z-10 animate-in slide-in-from-bottom duration-500 overflow-hidden max-h-[90vh] overflow-y-auto pb-safe">
+            <div className="p-8 pb-4">
+              <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-8" />
+              <h3 className="text-xl font-bold text-white mb-2 text-center">시스템 관리 설정</h3>
+              <p className="text-xs text-slate-500 text-center mb-10 uppercase tracking-[4px]">System Operations</p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    navigate('/keyword-management');
+                  }}
+                  className="bg-[#11141d] p-4 sm:p-6 rounded-3xl border border-white/5 hover:border-blue-500/30 transition-all cursor-pointer group flex flex-col items-center text-center space-y-3 sm:space-y-4"
+                >
+                  <div className="bg-blue-600/20 p-3 sm:p-4 rounded-2xl group-hover:scale-110 transition-transform">
+                    <Hash className="w-6 h-6 sm:w-8 sm:h-8 text-blue-400" />
+                  </div>
+                  <div>
+                    <span className="block font-bold text-slate-200 text-sm sm:text-base">할당 키워드 관리</span>
+                    <span className="text-[9px] sm:text-[10px] text-slate-500 mt-1 block">Critical Alert Keywords</span>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    navigate('/report-line-management');
+                  }}
+                  className="bg-[#11141d] p-4 sm:p-6 rounded-3xl border border-white/5 hover:border-purple-500/30 transition-all cursor-pointer group flex flex-col items-center text-center space-y-3 sm:space-y-4"
+                >
+                  <div className="bg-purple-600/20 p-3 sm:p-4 rounded-2xl group-hover:scale-110 transition-transform">
+                    <Users className="w-6 h-6 sm:w-8 sm:h-8 text-purple-400" />
+                  </div>
+                  <div>
+                    <span className="block font-bold text-slate-200 text-sm sm:text-base">보고 라인 관리</span>
+                    <span className="text-[9px] sm:text-[10px] text-slate-500 mt-1 block">Approval Hierarchy</span>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    navigate('/sms-test');
+                  }}
+                  className="bg-[#11141d] p-4 sm:p-6 rounded-3xl border border-white/5 hover:border-green-500/30 transition-all cursor-pointer group flex flex-col items-center text-center space-y-3 sm:space-y-4"
+                >
+                  <div className="bg-green-600/20 p-3 sm:p-4 rounded-2xl group-hover:scale-110 transition-transform">
+                    <MessageSquare className="w-6 h-6 sm:w-8 sm:h-8 text-green-400" />
+                  </div>
+                  <div>
+                    <span className="block font-bold text-slate-200 text-sm sm:text-base">수동 장애 접수</span>
+                    <span className="text-[9px] sm:text-[10px] text-slate-500 mt-1 block">Manual Incident Submission</span>
+                  </div>
+                </div>
+                <div
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    navigate('/user-management');
+                  }}
+                  className="bg-[#11141d] p-4 sm:p-6 rounded-3xl border border-white/5 hover:border-blue-500/30 transition-all cursor-pointer group flex flex-col items-center text-center space-y-3 sm:space-y-4"
+                >
+                  <div className="bg-blue-600/20 p-3 sm:p-4 rounded-2xl group-hover:scale-110 transition-transform">
+                    <User className="w-6 h-6 sm:w-8 sm:h-8 text-blue-400" />
+                  </div>
+                  <div>
+                    <span className="block font-bold text-slate-200 text-sm sm:text-base">사용자 계정 관리</span>
+                    <span className="text-[9px] sm:text-[10px] text-slate-500 mt-1 block">Account & Security Admin</span>
+                  </div>
+                </div>
+                <div
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                    navigate('/organization-management');
+                  }}
+                  className="bg-[#11141d] p-4 sm:p-6 rounded-3xl border border-white/5 hover:border-emerald-500/30 transition-all cursor-pointer group flex flex-col items-center text-center space-y-3 sm:space-y-4"
+                >
+                  <div className="bg-emerald-600/20 p-3 sm:p-4 rounded-2xl group-hover:scale-110 transition-transform">
+                    <Network className="w-6 h-6 sm:w-8 sm:h-8 text-emerald-400" />
+                  </div>
+                  <div>
+                    <span className="block font-bold text-slate-200 text-sm sm:text-base">부서/조직도 관리</span>
+                    <span className="text-[9px] sm:text-[10px] text-slate-500 mt-1 block">Org Hierarchy Tree Admin</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-8 pt-4 pb-12">
+              <button
+                onClick={() => setShowMoreMenu(false)}
+                className="w-full py-4 rounded-2xl bg-white/5 text-slate-400 font-bold hover:bg-white/10 transition-colors"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

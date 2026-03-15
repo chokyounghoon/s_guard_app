@@ -81,7 +81,8 @@ export default function AiInsightPanel({ onLogReceived, onShowDetail, selectedSm
             title: `SMS 장애 분석: ${selectedSms.sender}`,
             text: analysisText,
             message: analysisText,
-            severity: critical ? 'CRITICAL' : 'INFO'
+            severity: critical ? 'CRITICAL' : 'INFO',
+            category: getCategoryFromAnalysis(analysisText, selectedSms.message)
           });
         }
       } catch {
@@ -104,6 +105,20 @@ export default function AiInsightPanel({ onLogReceived, onShowDetail, selectedSm
            combined.includes('워룸') || combined.includes('db') ||
            combined.includes('데이터베이스') || combined.includes('서버 다운') ||
            combined.includes('down');
+  };
+
+  const getCategoryFromAnalysis = (analysisText, message) => {
+    const combined = ((analysisText || '') + (message || '')).toLowerCase();
+    if (combined.includes('security') || combined.includes('보안') || combined.includes('접속 시도') || combined.includes('로그인')) {
+      return 'security';
+    }
+    if (combined.includes('critical') || combined.includes('긴급') || combined.includes('장애')) {
+      return 'critical';
+    }
+    if (combined.includes('server') || combined.includes('서버') || combined.includes('cpu') || combined.includes('memory')) {
+      return 'server';
+    }
+    return 'report';
   };
 
   const buildLocalAnalysis = (message) => {
@@ -159,7 +174,7 @@ export default function AiInsightPanel({ onLogReceived, onShowDetail, selectedSm
 
   const handleOpenWarRoom = () => {
     if (onOpenWarRoom && selectedSms) {
-      onOpenWarRoom(selectedSms);
+      onOpenWarRoom(selectedSms, displayedText);
     }
   };
 

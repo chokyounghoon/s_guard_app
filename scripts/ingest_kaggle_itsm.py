@@ -32,7 +32,7 @@ def map_columns(df: pd.DataFrame) -> tuple[str, str, str]:
             break
             
     # Identify Description
-    for potential in ['short_description', 'description', 'issue', 'subject', 'title', 'document']:
+    for potential in ['short_description', 'description', 'issue', 'subject', 'title', 'document', 'content', 'eventtemplate']:
         matches = [c for c in cols if potential in c]
         if matches:
             desc_col = df.columns[cols.index(matches[0])]
@@ -57,7 +57,7 @@ def extract_metadata(row: pd.Series, df_columns: List[str]) -> Dict[str, Any]:
     cols_lower = [c.lower() for c in df_columns]
     
     # Extract priority/severity if exists
-    for p_col in ['priority', 'severity', 'urgency', 'impact']:
+    for p_col in ['priority', 'severity', 'urgency', 'impact', 'level']:
         matches = [c for c in cols_lower if p_col in c]
         if matches:
             val = str(row[df_columns[cols_lower.index(matches[0])]])

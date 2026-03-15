@@ -1,16 +1,27 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Depends, File, UploadFile, Form, Query
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
+import random
+import string
 import logging
 import json
 import os
+import hashlib
+import secrets
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import asyncio
+import base64
 import httpx
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text, ForeignKey, or_
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, relationship, backref
 import chromadb
 from sentence_transformers import SentenceTransformer
 
@@ -112,6 +123,64 @@ class KeywordDB(Base):
     __tablename__ = "alert_keywords"
     keyword = Column(String(50), primary_key=True)
     response = Column(Text)
+    severity = Column(String(20), default="NORMAL")
+    hit_count = Column(Integer, default=0)
+
+class UserDB(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(100), unique=True, index=True, nullable=False)
+    name = Column(String(100), nullable=False)
+    password_hash = Column(String(256), nullable=True)  # nullable for Google OAuth users
+    role = Column(String(50), default="analyst")  # admin, analyst, viewer
+    auth_provider = Column(String(30), default="local")  # local, google
+    company = Column(String(100), nullable=True)   # 회사소속
+    employee_id = Column(String(50), nullable=True)  # 사번
+    phone = Column(String(20), nullable=True)        # 핸드폰번호
+    honbu = Column(String(100), nullable=True)        # 본부
+    team = Column(String(100), nullable=True)         # 팀
+    part = Column(String(100), nullable=True)         # 파트
+    token = Column(String(256), nullable=True)        # 세션 토큰
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
+class OrganizationDB(Base):
+    __tablename__ = "organizations"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    code = Column(String(50), unique=True, index=True, nullable=True)
+    parent_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
+    depth = Column(Integer, default=1)  # 1: Company, 2: Honbu, 3: Team, 4: Part
+    sort_order = Column(Integer, default=0)
+
+    children = relationship("OrganizationDB", backref=backref('parent', remote_side=[id]), cascade="all, delete-orphan")
+
+class IncidentDB(Base):
+    __tablename__ = "incidents"
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(30), unique=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    severity = Column(String(20), default="NORMAL")  # CRITICAL, MAJOR, NORMAL
+    status = Column(String(30), default="Open")  # Open, In Progress, Completed
+    incident_type = Column(String(20), default="AI")  # AI, SMS
+    assigned_to = Column(String(100), nullable=True)
+    source_sms_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class ActivityLogDB(Base):
+    __tablename__ = "activity_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True)
+    user_name = Column(String(100), default="System")
+    incident_code = Column(String(30), nullable=True)
+    incident_title = Column(String(255), nullable=True)
+    action = Column(String(100), nullable=False)  # e.g. 'AI 리포트 보고 완료'
+    detail = Column(Text, nullable=True)
+    team = Column(String(100), nullable=True)
+    report_type = Column(String(50), default="AI 리포트")
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class WarRoomChatDB(Base):
     __tablename__ = "warroom_chats"
@@ -122,6 +191,25 @@ class WarRoomChatDB(Base):
     type = Column(String(20), default='user') # 'user', 'ai', 'system'
     text = Column(Text)
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+class WarRoomAttachmentDB(Base):
+    __tablename__ = "warroom_attachments"
+    id = Column(Integer, primary_key=True, index=True)
+    incident_id = Column(String(50), index=True)
+    filename = Column(String(255))          # stored filename
+    original_name = Column(String(255))     # user-facing name
+    file_type = Column(String(50))          # image/jpeg, application/pdf, etc.
+    url = Column(String(500))               # /static/uploads/{filename}
+    uploaded_by = Column(String(100), default="Unknown")
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+class ResetVerificationDB(Base):
+    __tablename__ = "reset_verifications"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(100), index=True)
+    code = Column(String(10))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_verified = Column(Boolean, default=False)
 
 # 테이블 생성 및 연결 대기
 import time
@@ -189,6 +277,14 @@ class SMSMessage(BaseModel):
     message: str
     received_at: Optional[str] = None
 
+class IncidentCreate(BaseModel):
+    code: str
+    title: str
+    description: Optional[str] = None
+    severity: str = "NORMAL"
+    incident_type: str = "AI"
+    source_sms_id: Optional[int] = None
+
 def check_keywords(db: Session, message: str) -> Optional[str]:
     keywords = db.query(KeywordDB).all()
     for kw in keywords:
@@ -227,10 +323,19 @@ async def receive_sms(sms: SMSMessage, background_tasks: BackgroundTasks, db: Se
     logger.info(f"SMS 수신: {sms.sender} - {sms.message}")
     response_message = check_keywords(db, sms.message)
     
+    # Use internal timestamp if provided, else fallback to server time
+    ts = datetime.utcnow()
+    if sms.received_at:
+        try:
+            # Handle ISO format like "2024-03-21T15:30:00" or simple "2024-03-21 15:30:00"
+            ts = datetime.fromisoformat(sms.received_at.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid timestamp format: {sms.received_at}. Falling back to server time.")
+    
     msg_db = SMSMessageDB(
         sender=sms.sender,
         message=sms.message,
-        timestamp=datetime.utcnow(),
+        timestamp=ts,
         keyword_detected=response_message is not None,
         response_message=response_message
     )
@@ -695,8 +800,45 @@ class ReportSaveRequest(BaseModel):
     content: str
     sms_id: Optional[str] = None
 
+class SmsAnalysisRequest(BaseModel):
+    sender: str
+    message: str
+
+@app.post("/ai/analyze-sms")
+async def analyze_sms(req: SmsAnalysisRequest):
+    """Perform real-time RAG analysis on an incoming SMS"""
+    query = f"다음 SMS 메시지를 분석하고 장애 유형과 대응 방안을 제시해줘: '{req.message}' (발신자: {req.sender})"
+    try:
+        # Use the existing RAG chain to find similar cases and analyze
+        result = qa_chain.invoke(query)
+        analysis_text = result.get('result', '')
+        
+        # If the result is too short or empty, provide a default but still structured response
+        if not analysis_text or len(analysis_text) < 10:
+            analysis_text = f"수신 메시지 '{req.message}'를 분석한 결과, 특이 장애 패턴이 발견되지 않았습니다. 지속적으로 모니터링이 필요합니다."
+            
+        return {"status": "success", "analysis": analysis_text}
+    except Exception as e:
+        logger.error(f"RAG 분석 중 오류 발생: {e}")
+        # Fallback to a simpler prompt if the chain fails
+        try:
+            response = await httpx.AsyncClient(timeout=30.0).post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json={
+                    "model": "llama3",
+                    "prompt": f"장애 관제 시스템 전문가로서 다음 SMS를 분석하고 대응 방안을 한국어로 한 문장으로 말해줘: {req.message}",
+                    "stream": False
+                }
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return {"status": "success", "analysis": data.get('response', '')}
+        except:
+            pass
+        return {"status": "error", "analysis": "AI 서비스를 일시적으로 사용할 수 없어 로컬 규칙으로 분석합니다."}
+
 @app.post("/ai/report/save")
-async def save_ai_report(req: ReportSaveRequest):
+async def save_ai_report(req: ReportSaveRequest, db: Session = Depends(get_db)):
     logger.info(f"KMS 보고서 저장 요청: {req.title}")
     try:
         doc_id = f"report_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
@@ -712,6 +854,19 @@ async def save_ai_report(req: ReportSaveRequest):
             }],
             ids=[doc_id]
         )
+        
+        # [활동로그] AI 리포트 저장 로그 추가
+        log = ActivityLogDB(
+            user_name="AI Autopilot",
+            incident_code=req.sms_id, # Linking to SMS ID if provided
+            incident_title=req.title,
+            action="AI 리포트 보고 완료",
+            detail=f"KMS 지식 베이스에 AI 분석 보고서({req.title})가 저장되었습니다.",
+            report_type="AI 리포트"
+        )
+        db.add(log)
+        db.commit()
+
         logger.info(f"ChromaDB [s_guard_knowledge] 컬렉션에 새 보고서 적재 성공. ID: {doc_id}")
         return {"status": "success", "message": "보고서가 성공적으로 KMS에 저장(임베딩)되었습니다.", "doc_id": doc_id}
     except Exception as e:
@@ -745,9 +900,342 @@ async def save_warroom_chat(msg: WarRoomMessage, db: Session = Depends(get_db)):
 
 @app.get("/warroom/chat/{incident_id}")
 async def get_warroom_chat(incident_id: str, db: Session = Depends(get_db)):
-    """Retrieve chat history for a specific incident"""
+    """Retrieve chat history for a specific incident with metadata"""
     chats = db.query(WarRoomChatDB).filter(WarRoomChatDB.incident_id == incident_id).order_by(WarRoomChatDB.timestamp.asc()).all()
-    return {"messages": chats}
+    
+    # Also fetch incident metadata for the title and description
+    incident = db.query(IncidentDB).filter(IncidentDB.code == incident_id).first()
+    title = incident.title if incident else f"Room {incident_id}"
+    description = incident.description if incident else ""
+    severity = incident.severity if incident else "NORMAL"
+    
+    return {
+        "messages": chats,
+        "title": title,
+        "description": description,
+        "severity": severity,
+        "status": incident.status if incident else "Open"
+    }
+
+@app.post("/incidents")
+async def create_incident(inc: IncidentCreate, db: Session = Depends(get_db)):
+    """Create or update incident metadata"""
+    # 1. Check if an incident for this specific SMS already exists
+    if inc.source_sms_id:
+        existing_sms_inc = db.query(IncidentDB).filter(IncidentDB.source_sms_id == inc.source_sms_id).first()
+        if existing_sms_inc:
+            return {
+                "status": "exists", 
+                "id": existing_sms_inc.id, 
+                "code": existing_sms_inc.code,
+                "title": existing_sms_inc.title
+            }
+
+    # 2. Check for exact code match (original behavior)
+    existing = db.query(IncidentDB).filter(IncidentDB.code == inc.code).first()
+    if existing:
+        existing.title = inc.title
+        existing.description = inc.description
+        existing.severity = inc.severity
+        db.commit()
+        db.refresh(existing)
+        return {"status": "updated", "id": existing.id, "code": existing.code}
+    
+    new_inc = IncidentDB(
+        code=inc.code,
+        title=inc.title,
+        description=inc.description,
+        severity=inc.severity,
+        incident_type=inc.incident_type,
+        source_sms_id=inc.source_sms_id
+    )
+    db.add(new_inc)
+    
+    # [활동로그] 새로운 워룸 개설 로그 추가
+    log = ActivityLogDB(
+        user_name="System",
+        incident_code=new_inc.code,
+        incident_title=new_inc.title,
+        action="War-Room 개설",
+        detail=f"새로운 War-Room ({new_inc.code})이 개설되었습니다.",
+        report_type="시스템"
+    )
+    db.add(log)
+    
+    db.commit()
+    db.refresh(new_inc)
+    return {"status": "created", "id": new_inc.id, "code": new_inc.code}
+
+# ─── War-Room Management Endpoints ──────────────────────────────────────────
+
+UPLOAD_DIR = "/tmp/warroom_uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@app.get("/warroom/rooms")
+async def list_warrooms(
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    assigned_to: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """List all War-Rooms with optional filters"""
+    query = db.query(IncidentDB)
+    
+    if status:
+        query = query.filter(IncidentDB.status == status)
+    
+    if q:
+        query = query.filter(or_(
+            IncidentDB.title.ilike(f"%{q}%"),
+            IncidentDB.description.ilike(f"%{q}%"),
+            IncidentDB.code.ilike(f"%{q}%")
+        ))
+        
+    if start_date:
+        try:
+            start_dt = datetime.fromisoformat(start_date)
+            query = query.filter(IncidentDB.created_at >= start_dt)
+        except: pass
+        
+    if end_date:
+        try:
+            end_dt = datetime.fromisoformat(end_date)
+            # To include the whole day if end_date doesn't have time
+            if len(end_date) <= 10: 
+                end_dt = end_dt.replace(hour=23, minute=59, second=59)
+            query = query.filter(IncidentDB.created_at <= end_dt)
+        except: pass
+        
+    if assigned_to:
+        query = query.filter(IncidentDB.assigned_to.ilike(f"%{assigned_to}%"))
+
+    incidents = query.order_by(IncidentDB.created_at.desc()).all()
+    
+    result = []
+    for inc in incidents:
+        # Latest message
+        latest = db.query(WarRoomChatDB)\
+            .filter(WarRoomChatDB.incident_id == inc.code)\
+            .order_by(WarRoomChatDB.timestamp.desc()).first()
+        
+        # Message count
+        msg_count = db.query(WarRoomChatDB)\
+            .filter(WarRoomChatDB.incident_id == inc.code)\
+            .count()
+        
+        # Attachment count
+        attach_count = db.query(WarRoomAttachmentDB)\
+            .filter(WarRoomAttachmentDB.incident_id == inc.code)\
+            .count()
+
+        result.append({
+            "code": inc.code,
+            "title": inc.title,
+            "description": inc.description,
+            "severity": inc.severity,
+            "status": inc.status,
+            "incident_type": inc.incident_type,
+            "assigned_to": inc.assigned_to,
+            "created_at": inc.created_at.isoformat() if inc.created_at else None,
+            "updated_at": inc.updated_at.isoformat() if inc.updated_at else None,
+            "last_message": latest.text if latest else None,
+            "last_message_time": latest.timestamp.isoformat() if latest else None,
+            "last_message_sender": latest.sender if latest else None,
+            "message_count": msg_count,
+            "attachment_count": attach_count,
+        })
+    
+    return {"total": len(result), "rooms": result}
+
+
+@app.post("/warroom/reset")
+async def reset_warroom_data(db: Session = Depends(get_db)):
+    """Wipe all War-Room incidents, chats, and attachments for testing/cleanup"""
+    try:
+        # 1. Delete physical files
+        if os.path.exists(UPLOAD_DIR):
+            import shutil
+            for filename in os.listdir(UPLOAD_DIR):
+                file_path = os.path.join(UPLOAD_DIR, filename)
+                try:
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    logger.error(f"Failed to delete {file_path}. Reason: {e}")
+
+        # 2. Purge DB tables
+        db.query(WarRoomChatDB).delete()
+        db.query(WarRoomAttachmentDB).delete()
+        db.query(IncidentDB).delete()
+        
+        # 3. Optional: Clear related Activity Logs if needed
+        db.query(ActivityLogDB).filter(ActivityLogDB.incident_code != None).delete()
+        
+        db.commit()
+        return {"status": "success", "message": "All War-Room data has been cleared."}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Reset failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/warroom/rooms/search")
+async def search_warrooms(
+    q: str = Query(..., description="Search query"),
+    db: Session = Depends(get_db)
+):
+    """Search War-Rooms by title or description"""
+    incidents = db.query(IncidentDB).filter(
+        or_(
+            IncidentDB.title.ilike(f"%{q}%"),
+            IncidentDB.description.ilike(f"%{q}%"),
+            IncidentDB.code.ilike(f"%{q}%")
+        )
+    ).order_by(IncidentDB.created_at.desc()).all()
+    
+    result = []
+    for inc in incidents:
+        latest = db.query(WarRoomChatDB)\
+            .filter(WarRoomChatDB.incident_id == inc.code)\
+            .order_by(WarRoomChatDB.timestamp.desc()).first()
+        msg_count = db.query(WarRoomChatDB).filter(WarRoomChatDB.incident_id == inc.code).count()
+        result.append({
+            "code": inc.code,
+            "title": inc.title,
+            "description": inc.description,
+            "severity": inc.severity,
+            "status": inc.status,
+            "created_at": inc.created_at.isoformat() if inc.created_at else None,
+            "last_message": latest.text if latest else None,
+            "last_message_time": latest.timestamp.isoformat() if latest else None,
+            "message_count": msg_count,
+        })
+    return {"total": len(result), "rooms": result}
+
+
+@app.post("/warroom/rooms/{incident_id}/join")
+async def join_warroom(
+    incident_id: str,
+    body: dict = {},
+    db: Session = Depends(get_db)
+):
+    """Record joining a War-Room"""
+    inc = db.query(IncidentDB).filter(IncidentDB.code == incident_id).first()
+    if not inc:
+        raise HTTPException(status_code=404, detail="War-Room not found")
+    
+    user_name = body.get("user_name", "Unknown")
+    
+    # Log system message for join event
+    join_msg = WarRoomChatDB(
+        incident_id=incident_id,
+        sender="시스템",
+        role="System",
+        type="system",
+        text=f"👤 {user_name}님이 War-Room에 참여하였습니다.",
+        timestamp=datetime.utcnow()
+    )
+    db.add(join_msg)
+    
+    # Log activity
+    log = ActivityLogDB(
+        user_name=user_name,
+        incident_code=incident_id,
+        incident_title=inc.title,
+        action="War-Room 참여",
+        detail=f"{user_name}이 {incident_id} War-Room에 참여"
+    )
+    db.add(log)
+    db.commit()
+    
+    return {"status": "joined", "incident_id": incident_id, "title": inc.title}
+
+
+@app.post("/warroom/upload")
+async def upload_warroom_file(
+    incident_id: str = Form(...),
+    uploaded_by: str = Form(default="Unknown"),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Upload a file/image to a War-Room"""
+    MAX_SIZE = 50 * 1024 * 1024  # 50MB
+    contents = await file.read()
+    if len(contents) > MAX_SIZE:
+        raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+    
+    # Generate unique filename
+    ext = os.path.splitext(file.filename)[1] if file.filename else ""
+    unique_name = f"{secrets.token_hex(12)}{ext}"
+    save_path = os.path.join(UPLOAD_DIR, unique_name)
+    
+    with open(save_path, "wb") as f:
+        f.write(contents)
+    
+    file_url = f"/warroom/uploads/{unique_name}"
+    
+    attachment = WarRoomAttachmentDB(
+        incident_id=incident_id,
+        filename=unique_name,
+        original_name=file.filename,
+        file_type=file.content_type,
+        url=file_url,
+        uploaded_by=uploaded_by,
+        timestamp=datetime.utcnow()
+    )
+    db.add(attachment)
+    
+    # Also save to chat log as a message
+    chat_msg = WarRoomChatDB(
+        incident_id=incident_id,
+        sender=uploaded_by,
+        role="User",
+        type="file",
+        text=f"[첨부파일] {file.filename}|{file_url}|{file.content_type}",
+        timestamp=datetime.utcnow()
+    )
+    db.add(chat_msg)
+    db.commit()
+    db.refresh(attachment)
+    
+    return {
+        "status": "success",
+        "id": attachment.id,
+        "url": file_url,
+        "filename": file.filename,
+        "file_type": file.content_type
+    }
+
+
+@app.get("/warroom/uploads/{filename}")
+async def get_warroom_upload(filename: str):
+    """Serve uploaded files"""
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path)
+
+
+@app.get("/warroom/rooms/{incident_id}/attachments")
+async def get_warroom_attachments(incident_id: str, db: Session = Depends(get_db)):
+    """Get all attachments for a War-Room"""
+    attachments = db.query(WarRoomAttachmentDB)\
+        .filter(WarRoomAttachmentDB.incident_id == incident_id)\
+        .order_by(WarRoomAttachmentDB.timestamp.asc()).all()
+    return {"attachments": [{
+        "id": a.id,
+        "filename": a.filename,
+        "original_name": a.original_name,
+        "file_type": a.file_type,
+        "url": a.url,
+        "uploaded_by": a.uploaded_by,
+        "timestamp": a.timestamp.isoformat() if a.timestamp else None
+    } for a in attachments]}
+
+# ─── End War-Room Management Endpoints ──────────────────────────────────────
 
 @app.post("/warroom/resolve/{incident_id}")
 async def resolve_and_learn_incident(incident_id: str, db: Session = Depends(get_db)):
@@ -795,9 +1283,27 @@ async def resolve_and_learn_incident(incident_id: str, db: Session = Depends(get
             ids=[f"warroom_{incident_id}_{int(datetime.now().timestamp())}"]
         )
         
+        # 1. Update Incident Status in DB
+        inc = db.query(IncidentDB).filter(IncidentDB.code == incident_id).first()
+        if inc:
+            inc.status = "Completed"
+            inc.updated_at = datetime.utcnow()
+        
+        # 2. Add Final System Message
+        closure_msg = WarRoomChatDB(
+            incident_id=incident_id,
+            sender="시스템",
+            role="System",
+            type="system",
+            text="✅ 대응이 완료되어 War-Room이 종료되었습니다. (읽기 전용 모드)",
+            timestamp=datetime.utcnow()
+        )
+        db.add(closure_msg)
+        db.commit()
+
         return {
             "status": "success", 
-            "message": f"{incident_id} 장애 보고서가 성공적으로 RAG Knowledge Base에 학습되었습니다.",
+            "message": f"{incident_id} 장애 보고서가 학습되었으며 War-Room이 종료되었습니다.",
             "message_count_processed": len(chats)
         }
         
@@ -844,6 +1350,614 @@ async def list_knowledge_entries(limit: int = 50):
         logger.error(f"Failed to list knowledge entries: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ===========================================================
+# AUTH Endpoints
+# ===========================================================
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    hashed = hashlib.sha256((salt + password).encode()).hexdigest()
+    return f"{salt}:{hashed}"
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        salt, hashed = stored_hash.split(":")
+        return hashlib.sha256((salt + password).encode()).hexdigest() == hashed
+    except Exception:
+        return False
+
+def generate_token(user_id: int, email: str) -> str:
+    raw = f"{user_id}:{email}:{secrets.token_hex(16)}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+async def send_email_async(to_email: str, subject: str, body: str):
+    """
+    SMTP 서버(기본: Gmail)를 통해 이메일을 비동기로 발송합니다.
+    """
+    smtp_server = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    sender_email = os.getenv("SMTP_USER", "")
+    sender_password = os.getenv("SMTP_PASSWORD", "")
+
+    if not sender_email or not sender_password:
+        logger.error("SMTP credentials (USER/PASSWORD) are missing in environment variables.")
+        return
+
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        # SMTP 연결
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            # TLS 보안 연결 (Gmail 필수)
+            if smtp_port == 587:
+                server.starttls()
+            
+            # 인증 정보가 있는 경우 로그인
+            server.login(sender_email, sender_password)
+            
+            server.send_message(msg)
+        logger.info(f"Email sent successfully to {to_email} via {smtp_server}")
+    except Exception as e:
+        logger.error(f"Failed to send email to {to_email}: {e}")
+
+class RequestResetCode(BaseModel):
+    email: str
+    employee_id: str
+
+class VerifyResetCode(BaseModel):
+    email: str
+    employee_id: str
+    code: str
+
+@app.post("/auth/request-reset-code")
+async def request_reset_code(req: RequestResetCode, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """
+    이메일과 사번이 일치하는 사용자를 확인하고 인증 코드를 전송(로그 기록)합니다.
+    """
+    user = db.query(UserDB).filter(UserDB.email == req.email, UserDB.employee_id == req.employee_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자 정보를 찾을 수 없습니다.")
+    
+    # 6자리 인증 코드 생성
+    code = "".join(random.choices(string.digits, k=6))
+    
+    # 기존 코드 삭제 후 새 코드 저장
+    db.query(ResetVerificationDB).filter(ResetVerificationDB.email == req.email).delete()
+    new_verif = ResetVerificationDB(email=req.email, code=code)
+    db.add(new_verif)
+    db.commit()
+    
+    # 이메일 발송 위임
+    background_tasks.add_task(send_email_async, user.email, "S-Guard 비밀번호 초기화 인증 코드", f"인증 코드: {code}")
+    
+    logger.info(f"\n[EMAIL TRIGGERED] To: {user.email}, Verification Code: {code}\n")
+    
+    return {"status": "success", "message": "인증 코드가 이메일로 전송되었습니다."}
+
+@app.post("/auth/verify-reset-code")
+async def verify_reset_code(req: VerifyResetCode, db: Session = Depends(get_db)):
+    """
+    인증 코드를 검증하고 성공 시 임시 비밀번호를 발급합니다.
+    """
+    verif = db.query(ResetVerificationDB).filter(
+        ResetVerificationDB.email == req.email, 
+        ResetVerificationDB.code == req.code
+    ).first()
+    
+    if not verif:
+        raise HTTPException(status_code=400, detail="인증 코드가 올바르지 않습니다.")
+    
+    # 코드 유효 시간 체크 (예: 5분)
+    if datetime.utcnow() - verif.created_at > timedelta(minutes=5):
+        raise HTTPException(status_code=400, detail="인증 코드가 만료되었습니다.")
+    
+    user = db.query(UserDB).filter(UserDB.email == req.email, UserDB.employee_id == req.employee_id).first()
+    if not user:
+         raise HTTPException(status_code=404, detail="사용자 정보를 찾을 수 없습니다.")
+
+    # 임시 비밀번호 생성 (기존 로직 사용)
+    temp_password = "".join(random.choices(string.ascii_letters + string.digits + "!@#$%", k=10))
+    user.password_hash = hash_password(temp_password)
+    
+    # 인증 완료 후 코드 삭제
+    db.query(ResetVerificationDB).filter(ResetVerificationDB.email == req.email).delete()
+    db.commit()
+    
+    return {
+        "status": "success",
+        "temp_password": temp_password,
+        "name": user.name,
+        "email": user.email
+    }
+
+class ProfileUpdateRequest(BaseModel):
+    user_id: int
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    company: Optional[str] = None
+    honbu: Optional[str] = None
+    team: Optional[str] = None
+    part: Optional[str] = None
+
+class SignupRequest(BaseModel):
+    email: str
+    name: str
+    password: str
+    company: Optional[str] = None
+    employee_id: Optional[str] = None
+    phone: Optional[str] = None
+    honbu: Optional[str] = None
+    team: Optional[str] = None
+    part: Optional[str] = None
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class UserResetPasswordRequest(BaseModel):
+    new_password: str
+
+class UserUpdateRoleRequest(BaseModel):
+    role: str
+
+class OrgNodeCreate(BaseModel):
+    name: str
+    code: Optional[str] = None
+    parent_id: Optional[int] = None
+    depth: int
+    sort_order: Optional[int] = 0
+
+class OrgNodeUpdate(BaseModel):
+    name: Optional[str] = None
+    code: Optional[str] = None
+    sort_order: Optional[int] = None
+
+@app.post("/auth/signup")
+async def signup(req: SignupRequest, db: Session = Depends(get_db)):
+    existing = db.query(UserDB).filter(UserDB.email == req.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="이미 등록된 이메일입니다.")
+    user = UserDB(
+        email=req.email,
+        name=req.name,
+        password_hash=hash_password(req.password),
+        auth_provider="local",
+        company=req.company,
+        employee_id=req.employee_id,
+        phone=req.phone,
+        honbu=req.honbu,
+        team=req.team,
+        part=req.part,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    token = generate_token(user.id, user.email)
+    user.token = token
+    db.commit()
+    db.refresh(user)
+    return {"status": "success", "token": token, "user": {"id": user.id, "name": user.name, "email": user.email, "role": user.role, "company": user.company, "honbu": user.honbu, "team": user.team, "part": user.part, "phone": user.phone}}
+
+@app.post("/auth/login")
+async def login(req: LoginRequest, db: Session = Depends(get_db)):
+    # 이메일 또는 사번으로 사용자 조회
+    user = db.query(UserDB).filter(
+        or_(UserDB.email == req.email, UserDB.employee_id == req.email),
+        UserDB.is_active == True
+    ).first()
+    
+    if not user or not user.password_hash or not verify_password(req.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="이메일(또는 사번) 또는 비밀번호가 올바르지 않습니다.")
+    
+    token = generate_token(user.id, user.email)
+    user.token = token
+    db.commit()
+    
+    return {"status": "success", "token": token, "user": {
+        "id": user.id, "name": user.name, "email": user.email, "role": user.role,
+        "company": user.company, "honbu": user.honbu, "team": user.team, "part": user.part, "phone": user.phone
+    }}
+
+class ChangePasswordRequest(BaseModel):
+    user_id: int
+    new_password: str
+
+@app.post("/auth/change-password")
+async def change_password(req: ChangePasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(UserDB).filter(UserDB.id == req.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    
+    user.password_hash = hash_password(req.new_password)
+    db.commit()
+    return {"status": "success", "message": "비밀번호가 성공적으로 변경되었습니다."}
+
+@app.patch("/auth/profile")
+async def update_profile(req: ProfileUpdateRequest, db: Session = Depends(get_db)):
+    user = db.query(UserDB).filter(UserDB.id == req.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    
+    if req.name is not None: user.name = req.name
+    if req.phone is not None: user.phone = req.phone
+    if req.company is not None: user.company = req.company
+    if req.honbu is not None: user.honbu = req.honbu
+    if req.team is not None: user.team = req.team
+    if req.part is not None: user.part = req.part
+    
+    db.commit()
+    db.refresh(user)
+    return {"status": "success", "user": {
+        "id": user.id, "name": user.name, "email": user.email, "role": user.role,
+        "company": user.company, "honbu": user.honbu, "team": user.team, "part": user.part, "phone": user.phone
+    }}
+
+class PasswordResetRequest(BaseModel):
+    email: str
+    employee_id: str
+
+@app.post("/auth/reset-password")
+async def reset_password(req: PasswordResetRequest, db: Session = Depends(get_db)):
+    """
+    이메일과 사번이 모두 일치하는 사용자를 찾아 임시 비밀번호를 생성하고 반환합니다.
+    내부 시스템이므로 임시 비밀번호를 응답에 포함해 화면에 표시합니다.
+    """
+    user = db.query(UserDB).filter(
+        UserDB.email == req.email,
+        UserDB.employee_id == req.employee_id,
+        UserDB.is_active == True
+    ).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="입력하신 정보와 일치하는 사용자를 찾을 수 없습니다.")
+
+    # 임시 비밀번호 생성: 영문대소/숫자/특수문자 조합 10자
+    import random, string
+    chars = string.ascii_letters + string.digits + "!@#$%"
+    temp_pw = ''.join(random.choices(chars, k=10))
+
+    user.password_hash = hash_password(temp_pw)
+    db.commit()
+    logger.info(f"Password reset for user {user.email}")
+
+    return {
+        "status": "success",
+        "message": "임시 비밀번호가 발급되었습니다. 로그인 후 반드시 변경해 주세요.",
+        "temp_password": temp_pw,
+        "name": user.name,
+        "email": user.email,
+    }
+
+@app.post("/auth/google")
+async def google_login(payload: dict, db: Session = Depends(get_db)):
+    email = payload.get("email")
+    name = payload.get("name", "Google User")
+    if not email:
+        raise HTTPException(status_code=400, detail="이메일 정보가 없습니다.")
+    user = db.query(UserDB).filter(UserDB.email == email).first()
+    if not user:
+        user = UserDB(email=email, name=name, auth_provider="google")
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    token = generate_token(user.id, user.email)
+    return {"status": "success", "token": token, "user": {"id": user.id, "name": user.name, "email": user.email, "role": user.role}}
+
+# ── User Management ────────────────────────────────
+@app.get("/users")
+async def list_users(db: Session = Depends(get_db)):
+    users = db.query(UserDB).all()
+    return [
+        {
+            "id": u.id,
+            "email": u.email,
+            "name": u.name,
+            "role": u.role,
+            "company": u.company,
+            "employee_id": u.employee_id,
+            "phone": u.phone,
+            "honbu": u.honbu,
+            "team": u.team,
+            "part": u.part,
+            "is_active": u.is_active,
+            "created_at": u.created_at
+        } for u in users
+    ]
+
+@app.post("/users/{user_id}/reset-password")
+async def reset_user_password(user_id: int, req: UserResetPasswordRequest, db: Session = Depends(get_db)):
+    user = db.query(UserDB).filter(UserDB.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    user.password_hash = hash_password(req.new_password)
+    db.commit()
+    return {"status": "success", "message": "비밀번호가 초기화되었습니다."}
+
+@app.patch("/users/{user_id}/status")
+async def toggle_user_status(user_id: int, db: Session = Depends(get_db)):
+    user = db.query(UserDB).filter(UserDB.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    user.is_active = not user.is_active
+    db.commit()
+    return {"status": "success", "is_active": user.is_active}
+
+@app.patch("/users/{user_id}/role")
+async def update_user_role(user_id: int, req: UserUpdateRoleRequest, db: Session = Depends(get_db)):
+    user = db.query(UserDB).filter(UserDB.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    user.role = req.role
+    db.commit()
+    return {"status": "success", "role": user.role}
+
+# ── Organization Management ────────────────────────
+@app.get("/org/tree")
+async def get_org_tree(db: Session = Depends(get_db)):
+    # Simple recursive builder for a small tree
+    def build_tree(parent_id=None):
+        nodes = db.query(OrganizationDB).filter(OrganizationDB.parent_id == parent_id).order_by(OrganizationDB.sort_order).all()
+        tree = []
+        for node in nodes:
+            tree.append({
+                "id": node.id,
+                "name": node.name,
+                "code": node.code,
+                "parent_id": node.parent_id,
+                "depth": node.depth,
+                "sort_order": node.sort_order,
+                "children": build_tree(node.id)
+            })
+        return tree
+    
+    return build_tree()
+
+@app.post("/org/nodes")
+async def create_org_node(req: OrgNodeCreate, db: Session = Depends(get_db)):
+    node = OrganizationDB(
+        name=req.name,
+        code=req.code,
+        parent_id=req.parent_id,
+        depth=req.depth,
+        sort_order=req.sort_order
+    )
+    db.add(node)
+    db.commit()
+    db.refresh(node)
+    return node
+
+@app.patch("/org/nodes/{node_id}")
+async def update_org_node(node_id: int, req: OrgNodeUpdate, db: Session = Depends(get_db)):
+    node = db.query(OrganizationDB).filter(OrganizationDB.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    if req.name is not None: node.name = req.name
+    if req.code is not None: node.code = req.code
+    if req.sort_order is not None: node.sort_order = req.sort_order
+    db.commit()
+    return node
+
+@app.delete("/org/nodes/{node_id}")
+async def delete_org_node(node_id: int, db: Session = Depends(get_db)):
+    node = db.query(OrganizationDB).filter(OrganizationDB.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    db.delete(node)
+    db.commit()
+    return {"status": "success"}
+
+# ===========================================================
+# INCIDENTS Endpoints
+# ===========================================================
+
+class IncidentCreateRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    severity: str = "NORMAL"
+    status: str = "Open"
+    incident_type: str = "AI"
+    assigned_to: Optional[str] = None
+    source_sms_id: Optional[int] = None
+
+class IncidentUpdateRequest(BaseModel):
+    status: Optional[str] = None
+    severity: Optional[str] = None
+    assigned_to: Optional[str] = None
+    description: Optional[str] = None
+
+def generate_incident_code(db: Session) -> str:
+    count = db.query(IncidentDB).count()
+    return f"INC-{20240000 + count + 1}"
+
+@app.get("/incidents")
+async def get_incidents(
+    status: Optional[str] = None,
+    severity: Optional[str] = None,
+    incident_type: Optional[str] = None,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    q = db.query(IncidentDB)
+    if status:
+        q = q.filter(IncidentDB.status == status)
+    if severity:
+        q = q.filter(IncidentDB.severity == severity)
+    if incident_type:
+        q = q.filter(IncidentDB.incident_type == incident_type)
+    incidents = q.order_by(IncidentDB.created_at.desc()).limit(limit).all()
+    result = []
+    for inc in incidents:
+        result.append({
+            "id": inc.id,
+            "code": inc.code,
+            "title": inc.title,
+            "description": inc.description,
+            "severity": inc.severity,
+            "status": inc.status,
+            "incident_type": inc.incident_type,
+            "assigned_to": inc.assigned_to,
+            "created_at": inc.created_at.isoformat() if inc.created_at else None,
+            "updated_at": inc.updated_at.isoformat() if inc.updated_at else None,
+        })
+    return {"total": len(result), "incidents": result}
+
+@app.post("/incidents")
+async def create_incident(req: IncidentCreateRequest, db: Session = Depends(get_db)):
+    code = generate_incident_code(db)
+    inc = IncidentDB(
+        code=code,
+        title=req.title,
+        description=req.description,
+        severity=req.severity,
+        status=req.status,
+        incident_type=req.incident_type,
+        assigned_to=req.assigned_to,
+        source_sms_id=req.source_sms_id,
+    )
+    db.add(inc)
+    db.commit()
+    db.refresh(inc)
+    return {"status": "success", "code": inc.code, "id": inc.id}
+
+@app.patch("/incidents/{incident_id}")
+async def update_incident(incident_id: int, req: IncidentUpdateRequest, db: Session = Depends(get_db)):
+    inc = db.query(IncidentDB).filter(IncidentDB.id == incident_id).first()
+    if not inc:
+        raise HTTPException(status_code=404, detail="인시던트를 찾을 수 없습니다.")
+    if req.status is not None:
+        inc.status = req.status
+    if req.severity is not None:
+        inc.severity = req.severity
+    if req.assigned_to is not None:
+        inc.assigned_to = req.assigned_to
+    if req.description is not None:
+        inc.description = req.description
+    inc.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(inc)
+    return {"status": "success", "id": inc.id, "code": inc.code}
+
+# ===========================================================
+# ACTIVITY LOGS Endpoints
+# ===========================================================
+
+class ActivityLogCreateRequest(BaseModel):
+    user_name: Optional[str] = "System"
+    incident_code: Optional[str] = None
+    incident_title: Optional[str] = None
+    action: str
+    detail: Optional[str] = None
+    team: Optional[str] = None
+    report_type: Optional[str] = "AI 리포트"
+
+@app.get("/activity-logs")
+async def get_activity_logs(limit: int = 50, db: Session = Depends(get_db)):
+    logs = db.query(ActivityLogDB).order_by(ActivityLogDB.created_at.desc()).limit(limit).all()
+    result = []
+    for log in logs:
+        result.append({
+            "id": log.id,
+            "user_name": log.user_name,
+            "incident_code": log.incident_code,
+            "incident_title": log.incident_title,
+            "action": log.action,
+            "detail": log.detail,
+            "team": log.team,
+            "report_type": log.report_type,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+        })
+    return {"total": len(result), "logs": result}
+
+@app.post("/activity-logs")
+async def create_activity_log(req: ActivityLogCreateRequest, db: Session = Depends(get_db)):
+    log = ActivityLogDB(
+        user_name=req.user_name,
+        incident_code=req.incident_code,
+        incident_title=req.incident_title,
+        action=req.action,
+        detail=req.detail,
+        team=req.team,
+        report_type=req.report_type,
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return {"status": "success", "id": log.id}
+
+# ===========================================================
+# KEYWORD DELETE Endpoint
+# ===========================================================
+
+@app.delete("/sms/keywords/{keyword}")
+async def delete_keyword(keyword: str, db: Session = Depends(get_db)):
+    kw = db.query(KeywordDB).filter(KeywordDB.keyword == keyword).first()
+    if not kw:
+        raise HTTPException(status_code=404, detail="키워드를 찾을 수 없습니다.")
+    db.delete(kw)
+    db.commit()
+    return {"status": "success", "deleted": keyword}
+
+# SMS 수신 시 자동으로 Incident 생성하는 hook
+@app.on_event("startup")
+async def startup_create_incident_on_sms():
+    """기존 수신 SMS 중 인시던트가 없는 항목들을 자동으로 인시던트 생성"""
+    pass  # 이후 SMS 수신 시 receive_sms endpoint에서 자동 생성
+
+@app.post("/sms/convert-multimodal")
+async def convert_multimodal(file: UploadFile = File(...)):
+    """
+    이미지 또는 음성 파일을 텍스트로 변환하는 실제 AI 멀티모달 처리 엔드포인트
+    """
+    content_type = file.content_type
+    filename = file.filename.lower()
+    
+    # 파일 내용 읽기
+    content = await file.read()
+    
+    if "image" in content_type:
+        # 1. Base64 인코딩
+        base64_image = base64.b64encode(content).decode('utf-8')
+        
+        # 2. Ollama LLAVA 모델 호출
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{OLLAMA_BASE_URL}/api/generate",
+                    json={
+                        "model": "llava",
+                        "prompt": "이 이미지에 포함된 모든 텍스트를 있는 그대로 추출해서 보여줘. 설명이나 요약은 하지 말고 텍스트 내용만 한국어로 출력해줘.",
+                        "images": [base64_image],
+                        "stream": False
+                    }
+                )
+                
+                if response.status_code == 200:
+                    result_data = response.json()
+                    raw_response = result_data.get('response', '')
+                    print(f"DEBUG: Ollama raw response: {raw_response[:100]}...")
+                    result_text = raw_response if raw_response else "텍스트를 추출하지 못했습니다."
+                else:
+                    print(f"DEBUG: Ollama error: {response.status_code} - {response.text}")
+                    result_text = f"[AI 분석 오류] Ollama 서버 응답 실패 (Code: {response.status_code})"
+        except Exception as e:
+            result_text = f"[AI 분석 오류] 서버 연동 중 문제 발생: {str(e)}"
+            
+    elif any(ext in filename for ext in ["mp3", "wav", "m4a", "ogg"]):
+        # Audio 처리 (현재는 텍스트 변환 시뮬레이션 - Whisper 등 연동 가능)
+        result_text = "[음성 분석 시뮬레이션] '현재 서초 데이터센터 2층 L2 스위치 모듈에서 과열 경고음이 감지되고 있습니다. 즉시 점검이 필요합니다.' (실제 STT 연동 준비 중)"
+    else:
+        result_text = "[멀티모달 분석] 지원하지 않는 파일 형식입니다. (이미지/음성 파일만 지원)"
+
+    return {
+        "status": "success",
+        "converted_text": result_text,
+        "filename": file.filename,
+        "content_type": content_type
+    }
 
 if __name__ == "__main__":
     import uvicorn

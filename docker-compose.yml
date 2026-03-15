@@ -51,6 +51,10 @@ services:
       DATABASE_URL: postgresql://sguard_user:sguard_password@db:5432/sguard_db
       OLLAMA_BASE_URL: http://ollama:11434
       CHROMA_BASE_URL: http://chroma:8000
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-your-email@gmail.com}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-your-app-password}
     depends_on:
       - db
       - ollama

@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft, Plus, X, Search, Hash, 
-  AlertTriangle, CheckCircle, Shield, 
+import {
+  ArrowLeft, Plus, X, Search, Hash,
+  AlertTriangle, CheckCircle, Shield,
   Trash2, Save, Filter
 } from 'lucide-react';
 
@@ -11,32 +11,46 @@ export default function KeywordManagementPage() {
   const [search, setSearch] = useState('');
   const [newKeyword, setNewKeyword] = useState('');
   const [selectedSeverity, setSelectedSeverity] = useState('CRITICAL');
-  const [keywords, setKeywords] = useState([
-    { id: 1, word: 'Connection timeout', severity: 'CRITICAL', count: 124 },
-    { id: 2, word: 'Memory leakage', severity: 'CRITICAL', count: 45 },
-    { id: 3, word: 'Socket error', severity: 'MAJOR', count: 89 },
-    { id: 4, word: 'CPU high usage', severity: 'MAJOR', count: 210 },
-    { id: 5, word: 'Disk full', severity: 'CRITICAL', count: 32 },
-    { id: 6, word: 'Auth failure', severity: 'NORMAL', count: 567 },
-  ]);
+  const [keywords, setKeywords] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const addKeyword = () => {
+  const API_BASE = 'http://localhost:8000';
+
+  useEffect(() => {
+    fetch(`${API_BASE}/sms/keywords`)
+      .then(r => r.json())
+      .then(data => {
+        setKeywords((data.keywords || []).map((k, i) => ({
+          id: k.keyword,
+          word: k.keyword,
+          severity: k.severity || 'NORMAL',
+          count: k.hit_count || 0,
+        })));
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const addKeyword = async () => {
     if (!newKeyword.trim()) return;
-    const newItem = {
-      id: Date.now(),
-      word: newKeyword.trim(),
-      severity: selectedSeverity,
-      count: 0
-    };
-    setKeywords([newItem, ...keywords]);
-    setNewKeyword('');
+    try {
+      const params = new URLSearchParams({ keyword: newKeyword.trim(), response: `${newKeyword.trim()} 감지됨`, severity: selectedSeverity });
+      const res = await fetch(`${API_BASE}/sms/keywords?${params}`, { method: 'POST' });
+      if (res.ok) {
+        setKeywords(prev => [{ id: newKeyword.trim(), word: newKeyword.trim(), severity: selectedSeverity, count: 0 }, ...prev]);
+        setNewKeyword('');
+      }
+    } catch (e) { console.error(e); }
   };
 
-  const removeKeyword = (id) => {
-    setKeywords(keywords.filter(k => k.id !== id));
+  const removeKeyword = async (id) => {
+    try {
+      await fetch(`${API_BASE}/sms/keywords/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      setKeywords(keywords.filter(k => k.id !== id));
+    } catch (e) { console.error(e); }
   };
 
-  const filteredKeywords = keywords.filter(k => 
+  const filteredKeywords = keywords.filter(k =>
     k.word.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -70,7 +84,7 @@ export default function KeywordManagementPage() {
           </h2>
           <div className="space-y-4">
             <div className="relative">
-              <input 
+              <input
                 type="text"
                 value={newKeyword}
                 onChange={(e) => setNewKeyword(e.target.value)}
@@ -85,19 +99,18 @@ export default function KeywordManagementPage() {
                   <button
                     key={sev}
                     onClick={() => setSelectedSeverity(sev)}
-                    className={`px-4 py-2 rounded-lg text-[10px] font-bold transition-all ${
-                      selectedSeverity === sev 
-                        ? (sev === 'CRITICAL' ? 'bg-red-500 text-white shadow-lg shadow-red-900/40' : 
-                           sev === 'MAJOR' ? 'bg-orange-500 text-white shadow-lg shadow-orange-900/40' : 
-                           'bg-blue-500 text-white shadow-lg shadow-blue-900/40')
-                        : 'text-slate-500 hover:text-slate-300'
-                    }`}
+                    className={`px-4 py-2 rounded-lg text-[10px] font-bold transition-all ${selectedSeverity === sev
+                      ? (sev === 'CRITICAL' ? 'bg-red-500 text-white shadow-lg shadow-red-900/40' :
+                        sev === 'MAJOR' ? 'bg-orange-500 text-white shadow-lg shadow-orange-900/40' :
+                          'bg-blue-500 text-white shadow-lg shadow-blue-900/40')
+                      : 'text-slate-500 hover:text-slate-300'
+                      }`}
                   >
                     {sev}
                   </button>
                 ))}
               </div>
-              <button 
+              <button
                 onClick={addKeyword}
                 className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-blue-900/40 hover:bg-blue-500 transition-all active:scale-[0.98]"
               >
@@ -116,7 +129,7 @@ export default function KeywordManagementPage() {
             </h2>
             <div className="relative w-40">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-              <input 
+              <input
                 type="text"
                 placeholder="검색..."
                 value={search}
@@ -128,15 +141,14 @@ export default function KeywordManagementPage() {
 
           <div className="grid gap-3">
             {filteredKeywords.map((k) => (
-              <div 
+              <div
                 key={k.id}
                 className="bg-[#11141d] p-4 rounded-2xl border border-white/5 flex items-center justify-between group hover:border-white/10 transition-all"
               >
                 <div className="flex items-center space-x-4">
-                  <div className={`p-2 rounded-xl ${
-                    k.severity === 'CRITICAL' ? 'bg-red-500/10' :
+                  <div className={`p-2 rounded-xl ${k.severity === 'CRITICAL' ? 'bg-red-500/10' :
                     k.severity === 'MAJOR' ? 'bg-orange-500/10' : 'bg-blue-500/10'
-                  }`}>
+                    }`}>
                     {k.severity === 'CRITICAL' ? (
                       <AlertTriangle className="w-4 h-4 text-red-500" />
                     ) : (
@@ -146,17 +158,16 @@ export default function KeywordManagementPage() {
                   <div>
                     <h3 className="text-sm font-bold text-slate-200">{k.word}</h3>
                     <div className="flex items-center gap-3 mt-1">
-                      <span className={`text-[9px] font-bold ${
-                        k.severity === 'CRITICAL' ? 'text-red-500' :
+                      <span className={`text-[9px] font-bold ${k.severity === 'CRITICAL' ? 'text-red-500' :
                         k.severity === 'MAJOR' ? 'text-orange-500' : 'text-blue-400'
-                      }`}>
+                        }`}>
                         {k.severity}
                       </span>
                       <span className="text-[9px] text-slate-600 font-mono">Hits: {k.count}</span>
                     </div>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => removeKeyword(k.id)}
                   className="p-2 rounded-lg text-slate-600 hover:text-red-500 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
                 >

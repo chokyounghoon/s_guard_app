@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Server, AlertTriangle, CheckCircle, Clock, Search, Bell, Menu, User, ChevronRight, Zap, Shield, Database, Sparkles, MessageSquare, Brain, MoreHorizontal, RefreshCw, Info, X, BarChart2, Hash, Users, LogIn, AlertCircle, Home } from 'lucide-react';
+import { Activity, Server, AlertTriangle, CheckCircle, Clock, Search, Bell, Menu, User, ChevronRight, Zap, Shield, Database, Sparkles, MessageSquare, Brain, MoreHorizontal, RefreshCw, Info, X, BarChart2, Hash, Users, LogIn, AlertCircle, Home, Phone, Building2, IdCard, ChevronDown, BarChart3, FileText, Settings, LogOut, ExternalLink, CheckCircle2, Filter, Lock, Eye, EyeOff } from 'lucide-react';
 import AgentDiscussionPanel from '../components/AgentDiscussionPanel';
 import EmergencyActionModal from '../components/EmergencyActionModal';
 import AiInsightPanel from '../components/AiInsightPanel';
@@ -8,6 +8,83 @@ import AiSmsStatusPanel from '../components/AiSmsStatusPanel';
 import AiPredictionPanel from '../components/AiPredictionPanel';
 import ErrorBoundary from '../components/ErrorBoundary';
 import AIInsightModal from '../components/AIInsightModal';
+import BottomMenu from '../components/BottomMenu';
+
+
+
+// ── 데이터 ─────────────────────────────────────────
+const SHINHAN_COMPANIES = [
+  '신한금융지주', '신한은행', '신한카드', '신한투자증권', '신한라이프',
+  '신한캐피탈', '신한자산운용', '신한저축은행', '신한AI', '신한DS',
+  '제주은행', '신한벤처투자', '신한리츠운용', '신한대체투자운용',
+  '신한자산신탁', '신한펀드파트너스', '신한금융플러스', '신한큐브리스크컨설팅',
+];
+
+const API_BASE = 'http://localhost:8000';
+
+// ── 셀렉트 + 기타 입력 컴포넌트 ───────────────────
+function SelectWithOther({ label, icon: Icon, options, value, onChange, required, disabled }) {
+  const nonOther = options.filter(o => o !== '기타');
+  const initialIsOther = !!value && !nonOther.includes(value);
+  const [isOther, setIsOther] = useState(initialIsOther);
+  const [otherText, setOtherText] = useState(initialIsOther ? value : '');
+
+  const selectVal = isOther ? '기타' : (value || '');
+
+  const handleSelect = (e) => {
+    const v = e.target.value;
+    if (v === '기타') {
+      setIsOther(true);
+      onChange(otherText);
+    } else {
+      setIsOther(false);
+      setOtherText('');
+      onChange(v);
+    }
+  };
+
+  const handleOther = (e) => {
+    setOtherText(e.target.value);
+    onChange(e.target.value);
+  };
+
+  const inputClass = "w-full bg-[#1a1f2e] border border-blue-500/20 rounded-xl py-3.5 pl-11 pr-4 text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-white";
+
+  return (
+    <div className={disabled ? 'opacity-50 pointer-events-none' : ''}>
+      <label className="text-xs font-semibold text-slate-400 ml-1 mb-1.5 block">
+        {label} {required && disabled !== true && <span className="text-red-400">*</span>}
+      </label>
+      <div className="relative">
+        <Icon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+        <select
+          required={required && !isOther && !disabled}
+          disabled={disabled}
+          value={selectVal}
+          onChange={handleSelect}
+          className={`${inputClass} appearance-none pr-10`}
+        >
+          <option value="" disabled className="bg-[#1a1f2e] text-slate-500">{disabled ? '해당없음' : `${label} 선택`}</option>
+          {options.map(o => (
+            <option key={o} value={o} className="bg-[#1a1f2e] text-white">{o}</option>
+          ))}
+        </select>
+        <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+      </div>
+      {isOther && (
+        <input
+          required={required}
+          type="text"
+          value={otherText}
+          onChange={handleOther}
+          placeholder={`${label} 직접 입력`}
+          autoFocus
+          className={`${inputClass} mt-2 pl-4`}
+        />
+      )}
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -25,12 +102,106 @@ export default function DashboardPage() {
   const [userProfile, setUserProfile] = useState(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showWarRoomPopup, setShowWarRoomPopup] = useState(false);
-  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [smsMessages, setSmsMessages] = useState([]);
   const [deletedSmsIds, setDeletedSmsIds] = useState(new Set());
   const [isSmsPanelCollapsed, setIsSmsPanelCollapsed] = useState(false);
   const [predictionCounts, setPredictionCounts] = useState({ critical: 0, server: 0, security: 0, report: 0 });
   const [selectedSms, setSelectedSms] = useState(null);
+  const [warRooms, setWarRooms] = useState([]);
+  const [activityLogs, setActivityLogs] = useState([]);
+
+  const handleOpenWarRoomFromInsight = async (smsMessage, analysisText) => {
+    if (!smsMessage) return;
+
+    const incidentId = `INC-${Date.now()}`;
+
+    // 1. Add to War-Room list
+    const newRoom = {
+      id: incidentId,
+      title: smsMessage.message, // Use full message as title
+      lastMsg: analysisText ? 'AI분석 완료' : '',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      participants: 1,
+      severity: 'CRITICAL',
+      unread: true
+    };
+    setWarRooms(prev => [newRoom, ...prev]);
+
+    // 2. Persist incident metadata and system messages
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://api.chokerslab.store';
+      
+      // Save Incident Metadata
+      const incRes = await fetch(`${apiBase}/incidents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: incidentId,
+          title: smsMessage.message, // Use full message as title
+          description: smsMessage.message,
+          severity: 'CRITICAL',
+          incident_type: 'SMS',
+          source_sms_id: smsMessage.id
+        })
+      });
+
+      if (incRes.ok) {
+        const incData = await incRes.json();
+        if (incData.status === 'exists') {
+          // If room already exists, just navigate there
+          navigate(`/chat/${incData.code}`);
+          return;
+        }
+      }
+
+      // 3. Persist AI Analysis Pinned Message
+      if (analysisText) {
+        await fetch(`${apiBase}/warroom/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            incident_id: incidentId,
+            sender: 'AI Autopilot',
+            role: 'AI분석',
+            type: 'ai_analysis',
+            text: analysisText
+          })
+        });
+      }
+
+      // Persist to backend as a system message
+      await fetch(`${apiBase}/warroom/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          incident_id: incidentId,
+          sender: '시스템',
+          role: 'System',
+          type: 'system',
+          text: `[장애발생] ${smsMessage.sender}로부터 SMS 수신: ${smsMessage.message}`
+        })
+      });
+      
+      // Also seed a welcome message
+      await fetch(`${apiBase}/warroom/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          incident_id: incidentId,
+          sender: '시스템',
+          role: 'System',
+          type: 'system',
+          text: 'War-Room 채팅방이 생성되었습니다. 모든 대화 내용은 장애 해결 시 AI 학습에 사용됩니다.'
+        })
+      });
+    } catch (err) {
+      console.error("Failed to persist war room message:", err);
+    }
+
+    // 3. Show War-Room List Popup (User will enter from there)
+    await fetchWarRooms();
+    setShowWarRoomPopup(true);
+  };
 
   // Initialize data from localStorage
   useEffect(() => {
@@ -47,12 +218,67 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // SMS 메시지 폴링 (5초마다)
+  // Fetch War-Rooms & SMS periodically
   useEffect(() => {
     fetchSMSMessages();
-    const interval = setInterval(fetchSMSMessages, 5000);
-    return () => clearInterval(interval);
+    fetchWarRooms();
+    fetchActivityLogs();
+    const smsInterval = setInterval(fetchSMSMessages, 5000);
+    const wrInterval = setInterval(fetchWarRooms, 8000);
+    const activityInterval = setInterval(fetchActivityLogs, 10000);
+    return () => {
+      clearInterval(smsInterval);
+      clearInterval(wrInterval);
+      clearInterval(activityInterval);
+    };
   }, []);
+
+  // SMS 선택 시 에이전트 토론 자동 시작은 이제 인시던트 스트림 클릭 시 직접 제어됨
+  // useEffect(() => {
+  //   if (selectedSms) {
+  //     startLiveScenario(selectedSms);
+  //   } else {
+  //     setShowAgentPanel(false);
+  //     setAgentMessages([]);
+  //   }
+  // }, [selectedSms]);
+
+  const fetchWarRooms = async () => {
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://api.chokerslab.store';
+      const res = await fetch(`${apiBase}/warroom/rooms?status=Open`);
+      if (res.ok) {
+        const data = await res.json();
+        const mapped = (data.rooms || []).map(room => ({
+          id: room.code,
+          title: room.title,
+          lastMsg: room.last_message || '대화가 시작되지 않았습니다.',
+          time: room.last_message_time 
+            ? new Date(room.last_message_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+            : new Date(room.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          participants: room.participants || Math.floor(Math.random() * 5) + 2,
+          severity: room.severity || 'NORMAL',
+          unread: false
+        }));
+        setWarRooms(mapped);
+      }
+    } catch (err) {
+      console.error("Failed to fetch War-Rooms:", err);
+    }
+  };
+
+  const fetchActivityLogs = async () => {
+    try {
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://api.chokerslab.store';
+      const res = await fetch(`${apiBase}/activity-logs?limit=10`);
+      if (res.ok) {
+        const data = await res.json();
+        setActivityLogs(data.logs || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch activity logs:", err);
+    }
+  };
 
   const fetchSMSMessages = async () => {
     try {
@@ -160,12 +386,13 @@ export default function DashboardPage() {
   useEffect(() => {
     const handleKeyPress = (e) => {
       if (e.key === 'd' && !showAgentPanel) {
-        startDemoScenario();
+        console.log('Demo scenario removed.');
       }
     };
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [showAgentPanel]);
+
 
   // Metric Simulation Loop
   useEffect(() => {
@@ -338,15 +565,30 @@ export default function DashboardPage() {
   };
 
   const handleLogReceived = (log, counts) => {
-    // Example: Add log to notifications or process it
     if (counts) {
       setPredictionCounts(counts);
     }
+    
+    // SMS 분석 결과에 따른 카운트 업데이트
+    if (log.category) {
+      setPredictionCounts(prev => ({
+        ...prev,
+        [log.category]: (prev[log.category] || 0) + 1
+      }));
+    }
     console.log("Log received in Dashboard:", log);
-    setAllNotifications(prev => [{ id: Date.now(), title: log.title || 'AI Log', content: log.message || log.text, type: 'AI', severity: log.severity, time: new Date().toLocaleTimeString() }, ...prev]);
+    const uniqueId = `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    setAllNotifications(prev => [{
+      id: uniqueId,
+      title: log.title || 'AI Log',
+      content: log.message || log.text,
+      type: 'AI',
+      severity: log.severity,
+      time: new Date().toLocaleTimeString()
+    }, ...prev]);
     // Optionally show a temporary message in the top banner for critical logs
     if (log.severity === 'CRITICAL') {
-      setMessages(prev => [...prev, { id: Date.now(), type: 'error', text: log.message }]);
+      setMessages(prev => [...prev, { id: `msg-${Date.now()}-${Math.random()}`, type: 'error', text: log.message }]);
     }
   };
 
@@ -359,10 +601,32 @@ export default function DashboardPage() {
       <ProfileModalContent
         profile={currentProfile}
         onClose={() => setShowProfileModal(false)}
-        onSave={(updated) => {
-          setUserProfile(updated);
-          localStorage.setItem('sguard_user', JSON.stringify(updated));
-          setShowProfileModal(false);
+        onSave={async (updated) => {
+          try {
+            const API_BASE = 'http://localhost:8000';
+            const res = await fetch(`${API_BASE}/auth/profile`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: updated.id,
+                name: updated.name,
+                phone: updated.phone,
+                company: updated.company,
+                honbu: updated.honbu,
+                team: updated.team,
+                part: updated.part,
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || '수정 실패');
+
+            setUserProfile(data.user);
+            localStorage.setItem('sguard_user', JSON.stringify(data.user));
+            setShowProfileModal(false);
+            alert('개인 정보가 수정되었습니다.');
+          } catch (err) {
+            alert(err.message);
+          }
         }}
         navigate={navigate}
       />
@@ -373,14 +637,15 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-[#0f1421] text-white font-sans overflow-x-hidden relative">
       {/* Top Navigation */}
       <nav className="flex justify-between items-center p-4 bg-[#0f1421] border-b border-white/10 sticky top-0 z-30">
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center font-bold text-lg shadow-lg shadow-blue-900/50">S</div>
-          <span className="text-lg font-bold tracking-tight">S-Guard <span className="text-blue-500">AI</span></span>
+        <div
+          className="flex items-center space-x-3 cursor-pointer group"
+          onClick={() => window.location.reload()}
+        >
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center font-bold text-lg shadow-lg shadow-blue-900/50 group-hover:scale-105 transition-transform">S</div>
+          <span className="text-lg font-bold tracking-tight group-hover:text-blue-400 transition-colors">S-Guard <span className="text-blue-500">AI</span></span>
         </div>
         <div className="flex items-center space-x-4">
-          <div className="relative group">
-            <Search className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors cursor-pointer" />
-          </div>
+          {/* Search Button removed per user request */}
           <div className="relative group">
             <Bell
               className="w-5 h-5 text-slate-400 group-hover:text-white transition-colors cursor-pointer"
@@ -464,9 +729,19 @@ export default function DashboardPage() {
                       setShowNotifications(false);
                       navigate(n.type === 'SMS' ? '/chat' : '/assignment-detail?status=Open');
                     }}
-                    className={`p-4 rounded-2xl border ${n.severity === 'CRITICAL' ? 'bg-red-500/5 border-red-500/10' : 'bg-[#11141d] border-white/5'} hover:border-blue-500/30 transition-all cursor-pointer group active:scale-[0.98]`}
+                    className={`p-4 rounded-2xl border ${n.severity === 'CRITICAL' ? 'bg-red-500/5 border-red-500/10' : 'bg-[#11141d] border-white/5'} hover:border-blue-500/30 transition-all cursor-pointer group active:scale-[0.98] relative`}
                   >
-                    <div className="flex justify-between items-start mb-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAllNotifications(prev => prev.filter(item => item.id !== n.id));
+                      }}
+                      className="absolute right-3 top-3 p-1 rounded-lg hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-all z-10"
+                    >
+                      <X className="w-3.5 h-3.5 text-slate-500 hover:text-red-400" />
+                    </button>
+
+                    <div className="flex justify-between items-start mb-2 pr-6">
                       <div className="flex items-center gap-2">
                         {n.type === 'AI' ? (
                           <Brain className="w-3.5 h-3.5 text-blue-400" />
@@ -588,7 +863,9 @@ export default function DashboardPage() {
                                 </span>
                               )}
                             </div>
-                            <span className="text-[10px] text-slate-500 font-mono">{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                            <span className="text-[10px] text-slate-500 font-mono bg-white/5 px-2 py-0.5 rounded ml-auto whitespace-nowrap">
+                              {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                            </span>
                           </div>
                           <p className="text-xs text-slate-400 mb-1">발신: {msg.sender}</p>
                           <p className={`text-sm leading-snug ${isSelected ? 'text-yellow-100' : 'text-slate-200'}`}>{msg.message}</p>
@@ -609,10 +886,11 @@ export default function DashboardPage() {
           </div>
         )}
 
+
         {/* AI Autopilot Insight Panel */}
         <React.Suspense fallback={<div className="h-48 bg-gray-900 rounded-3xl animate-pulse"></div>}>
           <ErrorBoundary>
-            <AiInsightPanel onLogReceived={handleLogReceived} onShowDetail={handleShowInsight} selectedSms={selectedSms} onOpenWarRoom={startLiveScenario} />
+            <AiInsightPanel onLogReceived={handleLogReceived} onShowDetail={handleShowInsight} selectedSms={selectedSms} onOpenWarRoom={handleOpenWarRoomFromInsight} />
           </ErrorBoundary>
         </React.Suspense>
 
@@ -660,7 +938,17 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={msg.id}
-                    onClick={() => { setSelectedSms(selectedSms?.id === msg.id ? null : msg); startLiveScenario(msg); }}
+                    onClick={() => { 
+                      const isSame = selectedSms?.id === msg.id;
+                      setSelectedSms(isSame ? null : msg); 
+                      // 좌측 인시던트 스트림 클릭 시에만 에이전트 토론 시작
+                      if (!isSame) {
+                        startLiveScenario(msg);
+                      } else {
+                        setShowAgentPanel(false);
+                        setAgentMessages([]);
+                      }
+                    }}
                     className="cursor-pointer transition-transform hover:scale-[1.01] active:scale-[0.99] relative"
                   >
                     {/* 반짝이는 표시기 */}
@@ -687,53 +975,47 @@ export default function DashboardPage() {
 
           {/* Quick Actions / Assignment / Agent Panel */}
           <div className="lg:col-span-2 space-y-6">
-            {showAgentPanel ? (
-              <AgentDiscussionPanel
-                messages={agentMessages}
-                isVisible={true}
-                embedded={true}
-                onClose={() => setShowAgentPanel(false)}
-              />
-            ) : (
-              <div className="bg-[#1a1f2e] rounded-2xl p-6 border border-white/5 h-full">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-bold flex items-center">
-                    <Shield className="w-4 h-4 mr-2 text-purple-400" />
-                    AI War-Room Situation Log
-                  </h3>
-                  <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded">승인 대기: 1건</span>
-                </div>
-
-                <div className="space-y-3">
-                  {/* Dynamic Active AI Scenario Item (Optional rendering logic if you want to show running scenario here too) */}
-                  <div onClick={() => { }} className="bg-[#11141d] p-4 rounded-xl border border-red-500/20 cursor-pointer hover:bg-[#1a1f2e] hover:border-red-500/50 transition-all group relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20">AGENT LOG</span>
-                      <span className="text-[10px] text-slate-500">Live</span>
-                    </div>
-                    <h4 className="font-bold text-sm text-slate-200 mb-1 group-hover:text-red-400 transition-colors">실시간 다중 에이전트 분석 중</h4>
-                    <p className="text-xs text-slate-500 mb-2 line-clamp-1">좌측 Incident 목록을 클릭하여 회의를 시작하세요.</p>
-                    <div className="flex justify-end">
-                      <span className="text-[10px] text-blue-400 font-bold flex items-center group-hover:underline">
-                        대기 중 <ChevronRight className="w-3 h-3 ml-0.5" />
-                      </span>
-                    </div>
+            <div className="bg-[#1a1f2e] rounded-2xl border border-white/5 h-full overflow-hidden flex flex-col">
+              {showAgentPanel || selectedSms ? (
+                <AgentDiscussionPanel
+                  messages={agentMessages}
+                  isVisible={true}
+                  embedded={true}
+                  onClose={() => {
+                    setShowAgentPanel(false);
+                    setSelectedSms(null);
+                  }}
+                />
+              ) : (
+                <div className="p-6 h-full flex flex-col">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold flex items-center">
+                      <Shield className="w-4 h-4 mr-2 text-purple-400" />
+                      AI War-Room Situation Log
+                    </h3>
+                    <span className="text-[10px] text-slate-500 bg-white/5 px-2 py-0.5 rounded">관제 대기 중</span>
                   </div>
 
-                  {/* Static Item */}
-                  <div className="bg-[#11141d] p-4 rounded-xl border border-white/5 opacity-60 hover:opacity-100 transition-opacity">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-orange-500"></div>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] font-bold text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20">MAJOR</span>
-                      <span className="text-[10px] text-slate-500">2h ago</span>
+                  <div className="flex-1 flex flex-col items-center justify-center opacity-40 py-10">
+                    <Brain className="w-12 h-12 text-slate-600 mb-4 animate-pulse" />
+                    <p className="text-sm text-slate-500 text-center">SMS 수신 내역을 클릭하여<br/>AI 에이전트 분석을 시작하세요.</p>
+                  </div>
+
+                  {/* 하단에 최근 활동 로그 작게 표시 (선택 사항) */}
+                  <div className="mt-auto border-t border-white/5 pt-4">
+                    <p className="text-[10px] text-slate-500 mb-2 font-bold uppercase tracking-wider">최근 시스템 활동</p>
+                    <div className="space-y-2">
+                      {activityLogs.slice(0, 2).map(log => (
+                        <div key={log.id} className="text-[10px] flex justify-between text-slate-400">
+                          <span className="truncate mr-2">{log.action}</span>
+                          <span className="shrink-0">{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      ))}
                     </div>
-                    <h4 className="font-bold text-sm text-slate-300 mb-1">API Gateway Latency</h4>
-                    <p className="text-xs text-slate-500 line-clamp-1">Intermittent packet loss in region ap-ne-2.</p>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -742,7 +1024,7 @@ export default function DashboardPage() {
           <div className="flex justify-between items-center mb-5">
             <div className="flex items-center space-x-2">
               <User className="w-5 h-5 text-blue-500" />
-              <h2 className="font-bold text-lg">나의 Autopilot 확인요청 현황</h2>
+              <h2 className="font-bold text-lg">나의 할당 및 처리 현황</h2>
             </div>
             <span className="text-[10px] text-slate-400">실시간 업데이트</span>
           </div>
@@ -885,7 +1167,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <h3 className="font-bold text-lg text-white">참여 중인 War-Room</h3>
-                  <p className="text-[10px] text-slate-500 font-mono">ACTIVE CHANNELS (2)</p>
+                  <p className="text-[10px] text-slate-500 font-mono">ACTIVE CHANNELS ({warRooms.length})</p>
                 </div>
               </div>
               <button
@@ -898,31 +1180,12 @@ export default function DashboardPage() {
 
             {/* Chat Room List */}
             <div className="flex-1 overflow-y-auto p-5 space-y-3 custom-scrollbar">
-              {[
-                {
-                  id: 1,
-                  title: '[신한카드] SHB02681 은행고객종합...',
-                  lastMsg: 'AI 분석 결과 트래픽 임계치 설정 오류가 확인되었습니다.',
-                  time: '18:45',
-                  participants: 5,
-                  severity: 'CRITICAL',
-                  unread: true
-                },
-                {
-                  id: 2,
-                  title: 'INC-8823 서버 타임아웃 대응',
-                  lastMsg: 'DB Connection Pool 증설 작업이 완료되었습니다.',
-                  time: '14:30',
-                  participants: 3,
-                  severity: 'MAJOR',
-                  unread: false
-                }
-              ].map((room) => (
+              {warRooms.map((room) => (
                 <div
                   key={room.id}
                   onClick={() => {
                     setShowWarRoomPopup(false);
-                    navigate('/chat');
+                    navigate(`/chat/${room.id}`);
                   }}
                   className="bg-[#11141d] p-4 rounded-2xl border border-white/5 hover:border-blue-500/30 transition-all cursor-pointer group relative overflow-hidden active:scale-[0.98]"
                 >
@@ -937,10 +1200,10 @@ export default function DashboardPage() {
                     <span className="text-[10px] text-slate-500">{room.time}</span>
                   </div>
 
-                  <h4 className="font-bold text-slate-200 mb-1 group-hover:text-blue-400 transition-colors truncate">
+                  <h4 className="font-bold text-slate-200 mb-2 group-hover:text-blue-400 transition-colors leading-relaxed line-clamp-2">
                     {room.title}
                   </h4>
-                  <p className="text-xs text-slate-400 truncate mb-3">{room.lastMsg}</p>
+                  {room.lastMsg && <p className="text-xs text-slate-400 truncate mb-3">{room.lastMsg}</p>}
 
                   <div className="flex items-center justify-between">
                     <div className="flex -space-x-2">
@@ -975,92 +1238,13 @@ export default function DashboardPage() {
       )}
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 w-full bg-[#0f111a] border-t border-white/10 px-6 py-3 flex justify-between items-center z-50 pb-safe">
-        <div className="flex flex-col items-center space-y-1 text-blue-500 cursor-pointer" onClick={() => navigate('/dashboard')}>
-          <Home className="w-6 h-6 fill-current" />
-          <span className="text-[10px] font-medium">홈</span>
-        </div>
-        <div
-          className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer"
-          onClick={() => setShowWarRoomPopup(true)}
-        >
-          <MessageSquare className="w-6 h-6" />
-          <span className="text-[10px] font-medium">War-Room</span>
-        </div>
-        <div className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer" onClick={() => navigate('/activity')}>
-          <BarChart2 className="w-6 h-6" />
-          <span className="text-[10px] font-medium">활동</span>
-        </div>
-        <div className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer" onClick={() => navigate('/search')}>
-          <Search className="w-6 h-6" />
-          <span className="text-[10px] font-medium">검색</span>
-        </div>
-        <div
-          className="flex flex-col items-center space-y-1 text-slate-500 hover:text-white transition-colors cursor-pointer"
-          onClick={() => setShowMoreMenu(true)}
-        >
-          <MoreHorizontal className="w-6 h-6" />
-          <span className="text-[10px] font-medium">더보기</span>
-        </div>
-      </nav>
-
-      {/* More Menu Popup */}
-      {showMoreMenu && (
-        <div className="fixed inset-0 z-[110] flex items-end justify-center animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setShowMoreMenu(false)} />
-          <div className="w-full bg-[#1a1f2e] rounded-t-[40px] border-t border-white/10 shadow-2xl relative z-10 animate-in slide-in-from-bottom duration-500 overflow-hidden">
-            <div className="p-8 pb-4">
-              <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-8" />
-              <h3 className="text-xl font-bold text-white mb-2 text-center">시스템 관리 설정</h3>
-              <p className="text-xs text-slate-500 text-center mb-10 uppercase tracking-[4px]">System Operations</p>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div
-                  onClick={() => {
-                    setShowMoreMenu(false);
-                    navigate('/keyword-management');
-                  }}
-                  className="bg-[#11141d] p-6 rounded-3xl border border-white/5 hover:border-blue-500/30 transition-all cursor-pointer group flex flex-col items-center text-center space-y-4"
-                >
-                  <div className="bg-blue-600/20 p-4 rounded-2xl group-hover:scale-110 transition-transform">
-                    <Hash className="w-8 h-8 text-blue-400" />
-                  </div>
-                  <div>
-                    <span className="block font-bold text-slate-200">할당 키워드 관리</span>
-                    <span className="text-[10px] text-slate-500 mt-1 block">Critical Alert Keywords</span>
-                  </div>
-                </div>
-
-                <div
-                  onClick={() => {
-                    setShowMoreMenu(false);
-                    navigate('/report-line-management');
-                  }}
-                  className="bg-[#11141d] p-6 rounded-3xl border border-white/5 hover:border-purple-500/30 transition-all cursor-pointer group flex flex-col items-center text-center space-y-4"
-                >
-                  <div className="bg-purple-600/20 p-4 rounded-2xl group-hover:scale-110 transition-transform">
-                    <Users className="w-8 h-8 text-purple-400" />
-                  </div>
-                  <div>
-                    <span className="block font-bold text-slate-200">보고 라인 관리</span>
-                    <span className="text-[10px] text-slate-500 mt-1 block">Approval Hierarchy</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-8 pt-4 pb-12">
-              <button
-                onClick={() => setShowMoreMenu(false)}
-                className="w-full py-4 rounded-2xl bg-white/5 text-slate-400 font-bold hover:bg-white/10 transition-colors"
-              >
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      <BottomMenu 
+        currentPath="/dashboard" 
+        onWarRoomClick={() => {
+          fetchWarRooms();
+          setShowWarRoomPopup(true);
+        }} 
+      />
     </div>
   );
 }
@@ -1121,21 +1305,109 @@ function AlertItem({ title, time, severity, desc }) {
 }
 
 function ProfileModalContent({ profile, onClose, onSave, navigate }) {
-  const [tempDept, setTempDept] = useState(profile.dept || '');
-  const [tempTeam, setTempTeam] = useState(profile.team || '');
+  // ── 조직도 동적 상태 ──
+  const [honbuList, setHonbuList] = useState([]);
+  const [orgMapping, setOrgMapping] = useState({});
+  const [teamMapping, setTeamMapping] = useState({});
+  const [partMapping, setPartMapping] = useState({});
+
+  useEffect(() => {
+    fetch(`${API_BASE}/org/tree`)
+      .then(r => r.json())
+      .then(tree => {
+        const hList = [];
+        const oMap = {};
+        const tMap = {};
+        const pMap = {};
+        tree.forEach(d1 => {
+          hList.push(d1.name);
+          if (d1.children && d1.children.length > 0) {
+            oMap[d1.name] = d1.children.map(d2 => d2.name);
+            d1.children.forEach(d2 => {
+              if (d2.children && d2.children.length > 0) {
+                tMap[d2.name] = d2.children.map(d3 => d3.name);
+                d2.children.forEach(d3 => {
+                  if (d3.children && d3.children.length > 0) {
+                    pMap[d3.name] = d3.children.map(d4 => d4.name);
+                  }
+                });
+              }
+            });
+          }
+        });
+        setHonbuList(hList);
+        setOrgMapping(oMap);
+        setTeamMapping(tMap);
+        setPartMapping(pMap);
+      })
+      .catch(err => console.error('Org tree fetch failed:', err));
+  }, []);
+
+  const [formData, setFormData] = useState({
+    id: profile.id,
+    name: profile.name || '',
+    phone: profile.phone || '',
+    company: profile.company || '',
+    honbu: profile.honbu || '',
+    team: profile.team || '',
+    part: profile.part || '',
+    subpart: profile.subpart || '',
+  });
+
+  // ── 비밀번호 변경 상태 ──
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const handleChange = (field) => (val) =>
+    setFormData(prev => ({ ...prev, [field]: typeof val === 'string' ? val : val.target.value }));
 
   const handleSave = () => {
-    if (!tempDept.trim() || !tempTeam.trim()) {
-      alert('소속과 팀 정보는 필수 입력 사항입니다.');
-      return;
-    }
+    if (!formData.name.trim()) { alert('이름을 입력해 주세요.'); return; }
+    if (!formData.company) { alert('회사소속을 선택해 주세요.'); return; }
+    if (!formData.honbu) { alert('부문을 선택해 주세요.'); return; }
 
-    onSave({
-      ...profile,
-      dept: tempDept,
-      team: tempTeam
-    });
-    alert('프로필 정보가 저장되었습니다.');
+    // Conditional validation using LIVE org mapping
+    const teamOptions = orgMapping[formData.honbu] || [];
+    if (teamOptions.length > 0 && !formData.team) { alert('본부를 선택해 주세요.'); return; }
+
+    const partOptions = teamMapping[formData.team] || [];
+    if (partOptions.length > 0 && !formData.part) { alert('팀을 선택해 주세요.'); return; }
+
+    const subpartOptions = partMapping[formData.part] || [];
+    if (subpartOptions.length > 0 && !formData.subpart) { alert('파트를 선택해 주세요.'); return; }
+
+    onSave(formData);
+  };
+
+  const handlePasswordChange = async () => {
+    if (!newPassword) { alert('새 비밀번호를 입력해 주세요.'); return; }
+    if (newPassword !== confirmPassword) { alert('비밀번호가 일치하지 않습니다.'); return; }
+    if (newPassword.length < 4) { alert('비밀번호는 4자 이상이어야 합니다.'); return; }
+
+    setIsChangingPassword(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: profile.id, new_password: newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('비밀번호가 성공적으로 변경되었습니다.');
+        setShowPasswordChange(false);
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        alert(data.detail || '비밀번호 변경 중 오류가 발생했습니다.');
+      }
+    } catch {
+      alert('서버와 통신 중 오류가 발생했습니다.');
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
   const handleLogout = () => {
@@ -1151,65 +1423,176 @@ function ProfileModalContent({ profile, onClose, onSave, navigate }) {
         if (profile.dept && profile.team) onClose();
       }}></div>
 
-      <div className="relative w-full max-w-md bg-gradient-to-b from-[#1a1f2e] to-[#0f111a] border border-white/10 rounded-3xl shadow-2xl overflow-hidden animate-scale-up">
+      <div className="relative w-full max-w-lg bg-gradient-to-b from-[#1a1f2e] to-[#0f111a] border border-white/10 rounded-3xl shadow-2xl overflow-hidden animate-scale-up">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-cyan-400"></div>
 
         <div className="p-8">
-          <div className="flex justify-between items-center mb-8">
+          <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-white flex items-center space-x-2">
               <User className="w-5 h-5 text-blue-400" />
               <span>회원 정보 관리</span>
             </h2>
-            {profile.dept && profile.team && (
-              <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-colors">
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
-            )}
+            <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+              <X className="w-5 h-5 text-slate-400" />
+            </button>
           </div>
 
-          <div className="flex flex-col items-center mb-8">
-            <div className="w-24 h-24 rounded-full bg-slate-800 border-4 border-blue-500/20 overflow-hidden mb-4 shadow-xl">
-              {profile.picture ? (
-                <img src={profile.picture} alt="Profile" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <User className="w-12 h-12 text-slate-500" />
+          <div className="flex items-center space-x-4 mb-8 bg-slate-900/40 p-4 rounded-2xl border border-white/5">
+            <div className="w-16 h-16 rounded-full bg-slate-800 border-2 border-blue-500/20 overflow-hidden shadow-lg shrink-0">
+              <div className="w-full h-full flex items-center justify-center">
+                <User className="w-8 h-8 text-slate-500" />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white leading-tight">{formData.name}</h3>
+              <p className="text-xs text-slate-400">{profile.email}</p>
+            </div>
+          </div>
+
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+            {/* 이름 */}
+            <div>
+              <label className="text-xs font-semibold text-slate-400 ml-1 mb-1.5 block">이름 *</label>
+              <div className="relative">
+                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input required type="text" value={formData.name} onChange={handleChange('name')} placeholder="홍길동" className="w-full bg-[#1a1f2e] border border-blue-500/20 rounded-xl py-3.5 pl-11 pr-4 text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-white" />
+              </div>
+            </div>
+
+            {/* 핸드폰 */}
+            <div>
+              <label className="text-xs font-semibold text-slate-400 ml-1 mb-1.5 block">핸드폰 번호</label>
+              <div className="relative">
+                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input type="tel" value={formData.phone} onChange={handleChange('phone')} placeholder="010-0000-0000" className="w-full bg-[#1a1f2e] border border-blue-500/20 rounded-xl py-3.5 pl-11 pr-4 text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-white" />
+              </div>
+            </div>
+
+            {/* 회사소속 */}
+            <div>
+              <label className="text-xs font-semibold text-slate-400 ml-1 mb-1.5 block">회사소속 *</label>
+              <div className="relative">
+                <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <select
+                  required
+                  value={formData.company}
+                  onChange={handleChange('company')}
+                  className="w-full bg-[#1a1f2e] border border-blue-500/20 rounded-xl py-3.5 pl-11 pr-10 text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-white appearance-none"
+                >
+                  <option value="" disabled>회사를 선택하세요</option>
+                  {SHINHAN_COMPANIES.map(c => (
+                    <option key={c} value={c} className="bg-[#1a1f2e] text-white">{c}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <SelectWithOther
+                label="부문"
+                icon={Building2}
+                options={honbuList}
+                value={formData.honbu}
+                onChange={(val) => {
+                  handleChange('honbu')(val);
+                  handleChange('team')('');
+                  handleChange('part')('');
+                  handleChange('subpart')('');
+                }}
+                required
+              />
+              <SelectWithOther
+                label="본부"
+                icon={Building2}
+                options={orgMapping[formData.honbu] || []}
+                value={formData.team}
+                onChange={(val) => {
+                  handleChange('team')(val);
+                  handleChange('part')('');
+                  handleChange('subpart')('');
+                }}
+                required={(orgMapping[formData.honbu] || []).length > 0}
+                disabled={!(orgMapping[formData.honbu] || []).length > 0}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <SelectWithOther
+                label="팀"
+                icon={Building2}
+                options={teamMapping[formData.team] || []}
+                value={formData.part}
+                onChange={(val) => {
+                  handleChange('part')(val);
+                  handleChange('subpart')('');
+                }}
+                required={(teamMapping[formData.team] || []).length > 0}
+                disabled={!(teamMapping[formData.team] || []).length > 0}
+              />
+              <SelectWithOther
+                label="파트"
+                icon={Building2}
+                options={partMapping[formData.part] || []}
+                value={formData.subpart}
+                onChange={handleChange('subpart')}
+                required={(partMapping[formData.part] || []).length > 0}
+                disabled={!(partMapping[formData.part] || []).length > 0}
+              />
+            </div>
+            </div>
+
+            {/* 비밀번호 변경 섹션 */}
+            <div className="pt-4 mt-2 border-t border-white/5">
+              <button 
+                onClick={() => setShowPasswordChange(!showPasswordChange)}
+                className="flex items-center space-x-2 text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors uppercase tracking-wider mb-3"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>{showPasswordChange ? '비밀번호 변경 취소' : '비밀번호 변경하기'}</span>
+              </button>
+
+              {showPasswordChange && (
+                <div className="space-y-3 bg-white/5 p-4 rounded-2xl border border-white/5 animate-slide-down">
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input 
+                      type={showPw ? 'text' : 'password'} 
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="새 비밀번호 입력" 
+                      className="w-full bg-[#1a1f2e] border border-blue-500/20 rounded-xl py-3 pl-11 pr-11 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                    />
+                    <button
+                      onClick={() => setShowPw(!showPw)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                    >
+                      {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <CheckCircle2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input 
+                      type={showPw ? 'text' : 'password'} 
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="새 비밀번호 확인" 
+                      className="w-full bg-[#1a1f2e] border border-blue-500/20 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                    />
+                  </div>
+                  <button
+                    onClick={handlePasswordChange}
+                    disabled={isChangingPassword}
+                    className="w-full bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white font-bold py-2.5 rounded-xl transition-all text-xs border border-blue-500/30"
+                  >
+                    {isChangingPassword ? '변경 중...' : '비밀번호 변경 적용'}
+                  </button>
                 </div>
               )}
             </div>
-            <h3 className="text-lg font-bold text-white">{profile.name}</h3>
-            <p className="text-xs text-slate-400">{profile.email}</p>
-          </div>
 
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">소속 (Department) *</label>
-              <div className="relative group">
-                <input
-                  type="text"
-                  value={tempDept}
-                  onChange={(e) => setTempDept(e.target.value)}
-                  placeholder="예: 보안운영본부"
-                  className="w-full bg-[#0f111a] border border-white/10 rounded-xl py-3 pl-4 pr-10 text-sm placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-white"
-                />
-              </div>
-            </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest ml-1">팀 (Team) *</label>
-              <div className="relative group">
-                <input
-                  type="text"
-                  value={tempTeam}
-                  onChange={(e) => setTempTeam(e.target.value)}
-                  placeholder="예: AI관제팀"
-                  className="w-full bg-[#0f111a] border border-white/10 rounded-xl py-3 pl-4 pr-10 text-sm placeholder-slate-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-white"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-10 flex flex-col space-y-3">
+          <div className="mt-8 flex flex-col space-y-3">
             <button
               onClick={handleSave}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/40 transition-all transform active:scale-[0.98]"
@@ -1225,9 +1608,9 @@ function ProfileModalContent({ profile, onClose, onSave, navigate }) {
             </button>
           </div>
 
-          {(!profile.dept || !profile.team) && (
-            <p className="text-[10px] text-yellow-500/70 text-center mt-4">
-              * 서비스 이용을 위해 소속과 팀 정보를 먼저 입력해 주세요.
+          {(!formData.company || !formData.honbu || !formData.team || !formData.part) && (
+            <p className="text-[10px] text-yellow-500/70 text-center mt-4 italic">
+              * 서비스 이용을 위해 필수 정보를 모두 입력해 주세요.
             </p>
           )}
         </div>

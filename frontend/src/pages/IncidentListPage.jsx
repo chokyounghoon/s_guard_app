@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  ArrowLeft, Activity, Filter, Clock, ChevronRight, 
+import {
+  ArrowLeft, Activity, Filter, Clock, ChevronRight,
   AlertCircle, MessageSquare, Brain, CheckCircle, Search
 } from 'lucide-react';
 
@@ -19,54 +19,36 @@ export default function IncidentListPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Mock data for the detailed list
-  const incidents = [
-    { 
-      id: 'INC-8823', 
-      title: 'Server-02 Timeout Error', 
-      desc: 'Significant latency detected in transaction processing.',
-      time: '18:45',
-      date: '2023-10-25',
-      status: 'In Progress',
-      severity: 'Major'
-    },
-    { 
-      id: 'INC-8821', 
-      title: 'Database Connection Pool Exhaustion', 
-      desc: 'Connection pool reaching 95% threshold on node prkjap01.',
-      time: '14:30',
-      date: '2023-10-25',
-      status: 'Unconfirmed',
-      severity: 'Major'
-    },
-    { 
-      id: 'INC-8818', 
-      title: 'EAI Resource Conflict', 
-      desc: 'Intermittent failed transactions on interface IF-990.',
-      time: '11:15',
-      date: '2023-10-25',
-      status: 'Completed',
-      severity: 'Normal'
-    },
-    { 
-      id: 'INC-8815', 
-      title: 'MCI Response Time Spike', 
-      desc: 'Response time exceeded 500ms for mobile clients in area SL.',
-      time: '09:20',
-      date: '2023-10-25',
-      status: 'Completed',
-      severity: 'Normal'
+  const [incidents, setIncidents] = useState([]);
+
+  const API_BASE = 'http://localhost:8000';
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (category !== 'All') {
+      if (['Critical', 'Major', 'Normal'].includes(category)) params.set('severity', category.toUpperCase());
+      if (category === 'Processing') params.set('status', 'In Progress');
+      if (category === 'Unconfirmed') params.set('status', 'Open');
+      if (category === 'Completed') params.set('status', 'Completed');
     }
-  ].filter(item => {
-    if (category === 'All') return true;
-    if (category === 'Critical' && item.severity === 'Critical') return true;
-    if (category === 'Major' && item.severity === 'Major') return true;
-    if (category === 'Normal' && item.severity === 'Normal') return true;
-    if (category === 'Processing' && item.status === 'In Progress') return true;
-    if (category === 'Unconfirmed' && item.status === 'Unconfirmed') return true;
-    if (category === 'Completed' && item.status === 'Completed') return true;
-    return false;
-  });
+    if (type) params.set('incident_type', type);
+
+    fetch(`${API_BASE}/incidents?${params}&limit=50`)
+      .then(r => r.json())
+      .then(data => {
+        setIncidents((data.incidents || []).map(inc => ({
+          id: inc.code,
+          title: inc.title,
+          desc: inc.description || '',
+          time: inc.created_at ? new Date(inc.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '',
+          date: inc.created_at ? inc.created_at.split('T')[0] : '',
+          status: inc.status,
+          severity: inc.severity === 'CRITICAL' ? 'Critical' : inc.severity === 'MAJOR' ? 'Major' : 'Normal',
+        })));
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [type, category]);
 
   if (loading) {
     return (
@@ -96,16 +78,15 @@ export default function IncidentListPage() {
       <main className="flex-1 space-y-3">
         {incidents.length > 0 ? (
           incidents.map((incident) => (
-            <div 
+            <div
               key={incident.id}
               onClick={() => navigate(`/assignment-detail?status=${incident.status}`)}
               className="bg-[#11141d] p-5 rounded-3xl border border-white/5 hover:border-blue-500/30 transition-all cursor-pointer group active:scale-[0.98]"
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
-                    incident.severity === 'Major' ? 'bg-orange-500/20 text-orange-500 border-orange-500/30' : 'bg-blue-500/20 text-blue-500 border-blue-500/30'
-                  }`}>
+                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${incident.severity === 'Major' ? 'bg-orange-500/20 text-orange-500 border-orange-500/30' : 'bg-blue-500/20 text-blue-500 border-blue-500/30'
+                    }`}>
                     {incident.severity.toUpperCase()}
                   </span>
                   <span className="text-[10px] text-slate-500 font-mono">{incident.id}</span>
@@ -129,14 +110,13 @@ export default function IncidentListPage() {
                   <span>{incident.date}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                     incident.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 
-                     incident.status === 'Unconfirmed' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                     'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                   }`}>
-                     {incident.status}
-                   </span>
-                   <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-blue-400" />
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${incident.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                      incident.status === 'Unconfirmed' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                        'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                    }`}>
+                    {incident.status}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-blue-400" />
                 </div>
               </div>
             </div>
