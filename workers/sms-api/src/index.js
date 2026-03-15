@@ -19,9 +19,31 @@ export default {
     try {
       // ── SMS 수신 ─────────────────────────────────────────────────────────────
       if (path === '/sms/receive' && request.method === 'POST') {
-        const data = await request.json();
+        const bodyText = await request.text();
+        const data = JSON.parse(bodyText);
         const { sender, message, received_at } = data;
 
+        // 1. 로컬 백엔드 프록시 (BACKEND_URL 설정된 경우)
+        if (env.BACKEND_URL) {
+          try {
+            const backendRes = await fetch(`${env.BACKEND_URL}/sms/receive`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: bodyText
+            });
+            if (backendRes.ok) {
+              const backendData = await backendRes.json();
+              // 백엔드 성공 시 해당 응답 반환 (incident_id 포함됨)
+              return new Response(JSON.stringify(backendData), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+              });
+            }
+          } catch (e) {
+            console.error('[Proxy] SMS Receive proxy failed, falling back to KV:', e);
+          }
+        }
+
+        // 2. Mock/KV fallback (기존 로직)
         const keywords = {
           '장애': '장애 알림이 감지되었습니다.',
           'CRITICAL': '긴급 장애가 감지되었습니다.',

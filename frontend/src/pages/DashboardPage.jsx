@@ -129,7 +129,7 @@ export default function DashboardPage() {
 
     // 2. Persist incident metadata and system messages
     try {
-      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://api.chokerslab.store';
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://sguardai.khcho0421.workers.dev';
       
       // Save Incident Metadata
       const incRes = await fetch(`${apiBase}/incidents`, {
@@ -245,7 +245,7 @@ export default function DashboardPage() {
 
   const fetchWarRooms = async () => {
     try {
-      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://api.chokerslab.store';
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://sguardai.khcho0421.workers.dev';
       const res = await fetch(`${apiBase}/warroom/rooms?status=Open`);
       if (res.ok) {
         const data = await res.json();
@@ -269,7 +269,7 @@ export default function DashboardPage() {
 
   const fetchActivityLogs = async () => {
     try {
-      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://api.chokerslab.store';
+      const apiBase = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'https://sguardai.khcho0421.workers.dev';
       const res = await fetch(`${apiBase}/activity-logs?limit=10`);
       if (res.ok) {
         const data = await res.json();

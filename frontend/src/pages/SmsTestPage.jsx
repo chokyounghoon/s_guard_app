@@ -150,7 +150,7 @@ const SmsTestPage = () => {
         
         // HTTPS인 경우 Tunnel 도메인(api.chokerslab.store) 사용
         if (protocol === 'https:') {
-            return `https://api.chokerslab.store${path}`;
+            return `https://sguardai.khcho0421.workers.dev${path}`;
         }
         
         // 그 외(IP 접속 등) 현재 호스트의 8000 포트 시도
