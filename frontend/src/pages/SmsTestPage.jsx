@@ -249,7 +249,7 @@ const SmsTestPage = () => {
                 setLogs(prev => [{
                     time: new Date().toLocaleTimeString(),
                     type: 'success',
-                    text: `접수 성공! (인시던트 ID: ${data.incident_id || 'N/A'})`
+                    text: `접수 성공! ${data.incident_id ? `(인시던트 ID: ${data.incident_id})` : '(API 접수 완료)'}`
                 }, ...prev]);
                 setMessage('');
             } else {
